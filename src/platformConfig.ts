@@ -5,7 +5,7 @@
 
 export const PLATFORM_CONFIG = {
   // Platform URLs
-  platformUrl: "http://localhost:3000",
+  platformUrl: "https://platform.symulate.dev",
 
   // Supabase configuration
   supabase: {
