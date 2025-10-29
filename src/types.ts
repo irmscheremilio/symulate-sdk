@@ -99,6 +99,7 @@ export interface CachedTemplate {
   template: any;
   timestamp: number;
   schemaHash: string;
+  path?: string; // The endpoint path that generated this cache entry
 }
 
 export interface AIProviderOptions {

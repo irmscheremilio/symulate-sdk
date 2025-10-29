@@ -123,7 +123,8 @@ async function setSupabaseCacheEntry(
   userId: string,
   apiKeyId?: string,
   accessToken?: string,
-  projectId?: string
+  projectId?: string,
+  path?: string
 ): Promise<boolean> {
   try {
     const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${PLATFORM_CONFIG.supabase.anonKey}`;
@@ -143,6 +144,11 @@ async function setSupabaseCacheEntry(
     // Add project_id if provided (required for project-scoped cache)
     if (projectId) {
       payload.project_id = projectId;
+    }
+
+    // Add path if provided (for filtering by endpoint path)
+    if (path) {
+      payload.path = path;
     }
 
     const response = await fetch(`${PLATFORM_CONFIG.api.rest}/mockend_cache`, {
@@ -340,13 +346,14 @@ export async function getCachedTemplate(schemaHash: string, apiKeyId?: string): 
   return cache[schemaHash] || null;
 }
 
-export async function setCachedTemplate(schemaHash: string, template: any): Promise<void> {
+export async function setCachedTemplate(schemaHash: string, template: any, path?: string): Promise<void> {
   // Write to local cache first
   const cache = readCache();
   cache[schemaHash] = {
     template,
     timestamp: Date.now(),
     schemaHash,
+    path, // Track the endpoint path
   };
   writeCache(cache);
 
@@ -359,7 +366,7 @@ export async function setCachedTemplate(schemaHash: string, template: any): Prom
         // Get current project ID from session
         const projectId = session.currentProjectId;
 
-        const success = await setSupabaseCacheEntry(schemaHash, template, session.userId, undefined, session.accessToken, projectId);
+        const success = await setSupabaseCacheEntry(schemaHash, template, session.userId, undefined, session.accessToken, projectId, path);
         if (success) {
           console.log("[Symulate] Cache saved to Supabase");
         }
@@ -447,12 +454,13 @@ export function debugCache(): void {
 /**
  * Get cache entries with metadata for preview
  */
-export function getCacheEntries(): Array<{ hash: string; timestamp: number; dataPreview: string }> {
+export function getCacheEntries(): Array<{ hash: string; timestamp: number; dataPreview: string; path?: string }> {
   const cache = readCache();
   return Object.entries(cache).map(([hash, entry]) => ({
     hash,
     timestamp: entry.timestamp,
     dataPreview: JSON.stringify(entry.template).slice(0, 100) + "...",
+    path: entry.path,
   }));
 }
 
@@ -482,7 +490,7 @@ export function getCacheEntriesByPattern(pattern: string): Array<{ hash: string;
 /**
  * Get all cache entries from Supabase for the authenticated user's current project
  */
-export async function getSupabaseCacheEntries(apiKeyId?: string): Promise<Array<{ hash: string; timestamp: number; dataPreview: string; userId: string; apiKeyId?: string; projectId?: string }>> {
+export async function getSupabaseCacheEntries(apiKeyId?: string): Promise<Array<{ hash: string; timestamp: number; dataPreview: string; userId: string; apiKeyId?: string; projectId?: string; path?: string }>> {
   try {
     const session = getAuthSession();
     if (!session || !session.userId) {
@@ -538,6 +546,7 @@ export async function getSupabaseCacheEntries(apiKeyId?: string): Promise<Array<
       userId: entry.user_id,
       apiKeyId: entry.api_key_id,
       projectId: entry.project_id,
+      path: entry.path,
     }));
   } catch (error) {
     console.warn("[Symulate] Error fetching Supabase cache entries:", error);
@@ -662,6 +671,91 @@ export function clearCacheByPattern(pattern: string): number {
     console.log(`[Symulate] ✓ Cleared ${clearedCount} cache entries matching "${pattern}"`);
   } else {
     console.log(`[Symulate] ✗ No cache entries found matching "${pattern}"`);
+  }
+
+  return clearedCount;
+}
+
+/**
+ * Delete Supabase cache entries for a specific path
+ */
+async function deleteSupabaseCacheByPath(path: string, userId: string, accessToken?: string, apiKeyId?: string, projectId?: string): Promise<number> {
+  try {
+    const authHeader = accessToken ? `Bearer ${accessToken}` : `Bearer ${PLATFORM_CONFIG.supabase.anonKey}`;
+
+    // Build query URL with path filter
+    let url = `${PLATFORM_CONFIG.api.rest}/mockend_cache?path=eq.${encodeURIComponent(path)}&user_id=eq.${userId}`;
+    if (apiKeyId) {
+      url += `&api_key_id=eq.${apiKeyId}`;
+    }
+    if (projectId) {
+      url += `&project_id=eq.${projectId}`;
+    }
+
+    const response = await fetch(url, {
+      method: "DELETE",
+      headers: {
+        "apikey": PLATFORM_CONFIG.supabase.anonKey,
+        "Authorization": authHeader,
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+      },
+    });
+
+    if (!response.ok) {
+      console.warn("[Symulate] Failed to delete from Supabase cache by path");
+      return 0;
+    }
+
+    const deleted = await response.json() as any[];
+    return deleted.length;
+  } catch (error) {
+    console.warn("[Symulate] Error deleting from Supabase cache by path:", error);
+    return 0;
+  }
+}
+
+/**
+ * Clear all cache entries for a specific endpoint path (checks both local and Supabase)
+ */
+export async function clearCacheByPath(path: string, apiKeyId?: string): Promise<number> {
+  let clearedCount = 0;
+
+  // Clear from local cache
+  const cache = readCache();
+  for (const [hash, entry] of Object.entries(cache)) {
+    if (entry.path === path) {
+      delete cache[hash];
+      clearedCount++;
+    }
+  }
+
+  if (clearedCount > 0) {
+    writeCache(cache);
+    console.log(`[Symulate] ✓ Cleared ${clearedCount} local cache entry(ies) for path: ${path}`);
+  }
+
+  // Also clear from Supabase if authenticated (Node.js only)
+  if (isNode) {
+    try {
+      const session = getAuthSession();
+      if (session && session.userId) {
+        // Get current project ID from session
+        const projectId = session.currentProjectId;
+
+        const supabaseCount = await deleteSupabaseCacheByPath(path, session.userId, session.accessToken, apiKeyId, projectId);
+        if (supabaseCount > 0) {
+          console.log(`[Symulate] ✓ Cleared ${supabaseCount} Supabase cache entry(ies) for path: ${path}`);
+          clearedCount += supabaseCount;
+        }
+      }
+    } catch (error) {
+      console.warn("[Symulate] Error clearing Supabase cache by path:", error);
+    }
+  }
+
+  if (clearedCount === 0) {
+    console.log(`[Symulate] ✗ No cache entries found for path: ${path}`);
   }
 
   return clearedCount;

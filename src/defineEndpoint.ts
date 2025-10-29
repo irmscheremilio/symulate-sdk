@@ -265,7 +265,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
 
     // Cache the generated data
     if (globalConfig.cacheEnabled) {
-      await setCachedTemplate(schemaHash, generatedData);
+      await setCachedTemplate(schemaHash, generatedData, config.path);
       console.log(`[Symulate] ✓ Cached Faker.js data for ${config.path} (hash: ${schemaHash})`);
     }
 
@@ -289,7 +289,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
 
       // Cache the generated data
       if (globalConfig.cacheEnabled) {
-        await setCachedTemplate(schemaHash, generatedData);
+        await setCachedTemplate(schemaHash, generatedData, config.path);
         console.log(`[Symulate] ✓ Cached AI-generated data for ${config.path} (hash: ${schemaHash})`);
       }
 
@@ -321,7 +321,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
 
       // Cache the generated data
       if (globalConfig.cacheEnabled) {
-        await setCachedTemplate(schemaHash, generatedData);
+        await setCachedTemplate(schemaHash, generatedData, config.path);
         console.log(`[Symulate] ✓ Cached Faker.js data for ${config.path} (hash: ${schemaHash})`);
       }
 
@@ -340,7 +340,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
 
       // Cache the generated data
       if (globalConfig.cacheEnabled) {
-        await setCachedTemplate(schemaHash, generatedData);
+        await setCachedTemplate(schemaHash, generatedData, config.path);
         console.log(`[Symulate] ✓ Cached AI-generated data for ${config.path} (hash: ${schemaHash})`);
       }
 
@@ -362,7 +362,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
 
       // Cache the generated data
       if (globalConfig.cacheEnabled) {
-        await setCachedTemplate(schemaHash, generatedData);
+        await setCachedTemplate(schemaHash, generatedData, config.path);
         console.log(`[Symulate] ✓ Cached Faker.js data for ${config.path} (hash: ${schemaHash})`);
       }
 

@@ -152,6 +152,9 @@ program
         console.log(`\n📁 Local Cache (${totalLocal} total):\n`);
         entries.forEach((entry, index) => {
           console.log(`  [${index + 1}] Hash: ${entry.hash}`);
+          if (entry.path) {
+            console.log(`      Path: ${entry.path}`);
+          }
           console.log(`      Cached: ${new Date(entry.timestamp).toLocaleString()}`);
           console.log(`      Preview: ${entry.dataPreview}`);
           console.log();
@@ -163,6 +166,9 @@ program
         console.log(`\n☁️  Supabase Cache (${totalSupabase} total):\n`);
         supabaseEntries.forEach((entry, index) => {
           console.log(`  [${index + 1}] Hash: ${entry.hash}`);
+          if (entry.path) {
+            console.log(`      Path: ${entry.path}`);
+          }
           console.log(`      Cached: ${new Date(entry.timestamp).toLocaleString()}`);
           console.log(`      Preview: ${entry.dataPreview}`);
           console.log();
@@ -201,10 +207,11 @@ program
   .option("-e, --endpoint <pattern>", "Clear cache for endpoints matching this pattern")
   .option("-p, --preview", "Preview cached endpoints without clearing")
   .option("-h, --hash <hash>", "Clear cache for a specific hash")
+  .option("--path <path>", "Clear cache for a specific endpoint path (e.g., /api/users)")
   .option("-k, --key <api-key>", "Filter by API key ID")
   .action(async (options) => {
     try {
-      const { clearCache, clearCacheByHash, clearCacheByPattern, getCacheEntries } = await import("../cache");
+      const { clearCache, clearCacheByHash, clearCacheByPattern, clearCacheByPath, getCacheEntries } = await import("../cache");
 
       // Preview mode - show what's cached
       if (options.preview) {
@@ -218,6 +225,9 @@ program
 
         entries.forEach((entry, index) => {
           console.log(`\n  [${index + 1}] Hash: ${entry.hash}`);
+          if (entry.path) {
+            console.log(`      Path: ${entry.path}`);
+          }
           console.log(`      Cached: ${new Date(entry.timestamp).toLocaleString()}`);
           console.log(`      Preview: ${entry.dataPreview}`);
         });
@@ -225,6 +235,7 @@ program
         console.log(`\n  Total: ${entries.length} cached endpoint(s)`);
         console.log("\n💡 Tip: Run 'npx symulate regenerate' to clear all cache");
         console.log("        Run 'npx symulate regenerate --hash <hash>' to clear specific entry");
+        console.log("        Run 'npx symulate regenerate --path <path>' to clear by endpoint path");
         return;
       }
 
@@ -235,6 +246,18 @@ program
           console.log("✓ Cache entry cleared. Mock data will regenerate on next request.");
         } else {
           console.log("✗ Cache entry not found");
+          process.exit(1);
+        }
+        return;
+      }
+
+      // Clear by endpoint path
+      if (options.path) {
+        const count = await clearCacheByPath(options.path, options.key);
+        if (count > 0) {
+          console.log(`✓ Cleared ${count} cache entry(ies) for path "${options.path}". Mock data will regenerate on next request.`);
+        } else {
+          console.log(`✗ No cache entries found for path "${options.path}"`);
           process.exit(1);
         }
         return;
