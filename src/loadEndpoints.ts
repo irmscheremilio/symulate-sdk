@@ -36,6 +36,9 @@ async function loadConfig(cwd: string = process.cwd()): Promise<MockendConfig | 
         return config.default || config;
       } catch (error: any) {
         console.warn(`[Symulate] Warning: Could not load ${configFile}: ${error.message}`);
+        if (configFile === 'symulate.config.js') {
+          console.warn(`[Symulate] Tip: If using ES modules, rename to 'symulate.config.mjs' or add "type": "module" to package.json`);
+        }
       }
     }
   }
@@ -85,17 +88,33 @@ function enableTypeScriptExecution() {
   if (tsxEnabled) return;
 
   try {
-    // Register tsx to enable TypeScript execution
-    const tsx = require('tsx/cjs/api');
-    tsx.register();
-    tsxEnabled = true;
+    // Try modern tsx v4+ API first
+    try {
+      require('tsx/cjs');
+      tsxEnabled = true;
 
-    if (IS_DEBUG) {
-      console.log('[Symulate] TypeScript execution enabled');
+      if (IS_DEBUG) {
+        console.log('[Symulate] TypeScript execution enabled (tsx v4+)');
+      }
+      return;
+    } catch (e) {
+      // Fall back to older API
+      const tsx = require('tsx/cjs/api');
+      if (typeof tsx.register === 'function') {
+        tsx.register();
+      } else if (typeof tsx === 'function') {
+        tsx();
+      }
+      tsxEnabled = true;
+
+      if (IS_DEBUG) {
+        console.log('[Symulate] TypeScript execution enabled (tsx legacy)');
+      }
     }
   } catch (error: any) {
     console.warn('[Symulate] Warning: Could not enable TypeScript execution:', error.message);
-    console.warn('[Symulate] TypeScript files (.ts) will not be loaded. Please ensure files are compiled to JavaScript.');
+    console.warn('[Symulate] Please install tsx: npm install tsx');
+    console.warn('[Symulate] Or ensure TypeScript files are compiled to JavaScript before running sync.');
   }
 }
 
@@ -135,18 +154,28 @@ export async function loadEndpoints(): Promise<number> {
           console.log(`[Symulate] Loading: ${path.relative(cwd, entryPath)}`);
         }
 
-        const fileUrl = pathToFileURL(entryPath).href;
-
-        if (IS_DEBUG) {
-          console.log(`[Symulate] Importing: ${fileUrl}`);
-        }
-
         // Set the current file context before importing
         const { setCurrentFile } = await import('./defineEndpoint');
         const relativeFilename = path.relative(cwd, entryPath);
         setCurrentFile(relativeFilename);
 
-        await import(fileUrl);
+        // For TypeScript files with tsx enabled, use require (tsx hooks work with require)
+        // For JavaScript files, use dynamic import
+        if (isTypeScriptFile(entryPath) && tsxEnabled) {
+          if (IS_DEBUG) {
+            console.log(`[Symulate] Requiring (tsx): ${entryPath}`);
+          }
+          // Clear require cache to allow re-loading
+          delete require.cache[require.resolve(entryPath)];
+          require(entryPath);
+        } else {
+          const fileUrl = pathToFileURL(entryPath).href;
+          if (IS_DEBUG) {
+            console.log(`[Symulate] Importing: ${fileUrl}`);
+          }
+          await import(fileUrl);
+        }
+
         loadedCount++;
 
         // Clear the context after loading
@@ -162,8 +191,12 @@ export async function loadEndpoints(): Promise<number> {
           console.error(error.stack);
         }
         // Clear context even on error
-        const { setCurrentFile } = await import('./defineEndpoint');
-        setCurrentFile(null);
+        try {
+          const { setCurrentFile } = await import('./defineEndpoint');
+          setCurrentFile(null);
+        } catch (e) {
+          // Ignore if we can't clear context
+        }
       }
     }
 
