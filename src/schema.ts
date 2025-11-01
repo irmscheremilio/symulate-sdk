@@ -44,6 +44,10 @@ export interface StringSchema extends BaseSchema<string> {
   _meta: {
     schemaType: SchemaType;
     description?: string;
+    dbReference?: {
+      table: string;
+      column: string;
+    };
   };
 }
 
@@ -51,6 +55,10 @@ export interface NumberSchema extends BaseSchema<number> {
   _meta: {
     schemaType: "number" | "commerce.price";
     description?: string;
+    dbReference?: {
+      table: string;
+      column: string;
+    };
   };
 }
 
@@ -58,6 +66,10 @@ export interface BooleanSchema extends BaseSchema<boolean> {
   _meta: {
     schemaType: "boolean";
     description?: string;
+    dbReference?: {
+      table: string;
+      column: string;
+    };
   };
 }
 
@@ -235,6 +247,71 @@ class SchemaBuilder {
     }),
   };
 
+  // Database type reference
+  db(
+    tableDotColumn: string,
+    description?: string
+  ): StringSchema | NumberSchema | BooleanSchema {
+    const parts = tableDotColumn.split(".");
+
+    if (parts.length !== 2) {
+      throw new Error(
+        `Invalid db reference format. Expected "table.column", got "${tableDotColumn}"`
+      );
+    }
+
+    const [table, column] = parts;
+
+    // Try to load database types from imported file
+    let dbType: string | undefined;
+    try {
+      // This will be populated when user runs import-schema command
+      const { DatabaseTypes } = require("./databaseTypes");
+      dbType = DatabaseTypes?.[table]?.[column];
+    } catch {
+      // DatabaseTypes not imported yet, will use generic type
+    }
+
+    // Map database type to schema type
+    const schemaType = mapDbTypeToSchemaType(dbType || "string");
+
+    // Return appropriate schema based on inferred type
+    if (
+      schemaType === "number" ||
+      schemaType === "commerce.price"
+    ) {
+      return {
+        _type: 0 as number,
+        _meta: {
+          schemaType: "number",
+          description,
+          dbReference: { table, column },
+        },
+      };
+    }
+
+    if (schemaType === "boolean") {
+      return {
+        _type: false as boolean,
+        _meta: {
+          schemaType: "boolean",
+          description,
+          dbReference: { table, column },
+        },
+      };
+    }
+
+    // Default to string
+    return {
+      _type: "" as string,
+      _meta: {
+        schemaType: dbType ? mapDbTypeToSchemaType(dbType) : "string",
+        description,
+        dbReference: { table, column },
+      },
+    };
+  }
+
   // Complex types
   object<T extends Record<string, BaseSchema>>(
     shape: T,
@@ -257,6 +334,45 @@ class SchemaBuilder {
       _element: element,
     };
   }
+}
+
+// Helper function to map database types to schema types
+function mapDbTypeToSchemaType(dbType: string): SchemaType {
+  const type = dbType.toLowerCase().split("(")[0];
+
+  const typeMap: Record<string, SchemaType> = {
+    // String types
+    varchar: "string",
+    char: "string",
+    text: "string",
+    uuid: "uuid",
+
+    // Number types
+    integer: "number",
+    int: "number",
+    smallint: "number",
+    bigint: "number",
+    decimal: "number",
+    numeric: "number",
+    real: "number",
+    "double precision": "number",
+    serial: "number",
+    bigserial: "number",
+
+    // Boolean
+    boolean: "boolean",
+    bool: "boolean",
+
+    // Date/Time
+    timestamp: "date",
+    timestamptz: "date",
+    "timestamp with time zone": "date",
+    date: "date",
+    time: "string",
+    timetz: "string",
+  };
+
+  return typeMap[type] || "string";
 }
 
 export const m = new SchemaBuilder();

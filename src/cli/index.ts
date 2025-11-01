@@ -484,4 +484,21 @@ program
     }
   });
 
+// Import schema command
+program
+  .command("import-schema")
+  .description("Import database schema types from Symulate Platform")
+  .option("-o, --output <path>", "Output file path", "./src/types/database.ts")
+  .option("--schema-name <name>", "Specific schema name to import")
+  .option("--update", "Update existing file instead of creating new one")
+  .action(async (options) => {
+    try {
+      const { importSchema } = await import("./schema-import");
+      await importSchema(options);
+    } catch (error) {
+      console.error("Error importing schema:", error);
+      process.exit(1);
+    }
+  });
+
 program.parse();

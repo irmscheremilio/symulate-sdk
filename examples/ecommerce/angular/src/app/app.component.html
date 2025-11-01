@@ -1,0 +1,189 @@
+<div class="app">
+  <!-- Header -->
+  <header class="header glass">
+    <div class="container">
+      <div class="header-content">
+        <h1 class="logo">
+          <span class="logo-icon">💎</span>
+          <span class="logo-text">
+            <span class="logo-main">Angular</span>
+            <span class="logo-sub">Luxe</span>
+          </span>
+        </h1>
+        <nav class="nav">
+          <button class="nav-button glass-button">
+            <span>🏠</span>
+            Home
+          </button>
+          <button class="nav-button glass-button">
+            <span>🔍</span>
+            Search
+          </button>
+          <button class="nav-button glass-button">
+            <span>👤</span>
+            Account
+          </button>
+          <button class="nav-button glass-button cart-button">
+            <span>🛒</span>
+            Cart
+            <span class="badge">3</span>
+          </button>
+        </nav>
+      </div>
+    </div>
+  </header>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading">
+    <div class="spinner"></div>
+    <p>Loading luxury collection...</p>
+  </div>
+
+  <!-- Main Content -->
+  <ng-container *ngIf="!loading">
+    <!-- Hero Reviews Section -->
+    <section class="reviews-section glass">
+      <div class="container">
+        <h2 class="reviews-title">⭐ Customer Reviews</h2>
+        <div class="reviews-slider">
+          <div *ngFor="let review of reviews" class="review-card">
+            <div class="review-rating">
+              {{ getRatingStars(review.rating) }}
+            </div>
+            <p class="review-comment">"{{ review.comment }}"</p>
+            <div class="review-author">
+              <strong>{{ review.author }}</strong>
+              <span class="review-date">{{ review.date.split('T')[0] }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Categories & Controls -->
+    <section class="controls-section">
+      <div class="container">
+        <div class="controls-header">
+          <h2 class="section-title">Shop by Category</h2>
+          <div class="controls-actions">
+            <select
+              (change)="sortBy = $any($event.target).value"
+              [value]="sortBy"
+              class="sort-select glass-button"
+            >
+              <option value="name">Sort by Name</option>
+              <option value="price">Sort by Price</option>
+              <option value="rating">Sort by Rating</option>
+            </select>
+            <button class="view-toggle glass-button" (click)="toggleViewMode()">
+              {{ viewMode === 'grid' ? '☰' : '⊞' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="categories">
+          <button
+            class="category-btn glass-button"
+            [class.active]="selectedCategory === null"
+            (click)="selectCategory(null)"
+          >
+            All Products
+          </button>
+          <button
+            *ngFor="let category of categories"
+            class="category-btn glass-button"
+            [class.active]="selectedCategory === category.name"
+            (click)="selectCategory(category.name)"
+          >
+            {{ category.name }}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Products Grid -->
+    <main class="container">
+      <div class="products-header">
+        <h3 class="products-count">
+          {{ filteredAndSortedProducts.length }} Products
+          <span *ngIf="selectedCategory"> in {{ selectedCategory }}</span>
+        </h3>
+      </div>
+
+      <div class="products-grid" [class.list-view]="viewMode === 'list'">
+        <article
+          *ngFor="let product of filteredAndSortedProducts"
+          class="product-card glass"
+        >
+          <div class="product-badge-container">
+            <span *ngIf="product.inStock" class="product-badge in-stock">
+              ✓ Available
+            </span>
+            <span *ngIf="!product.inStock" class="product-badge out-of-stock">
+              Out of Stock
+            </span>
+          </div>
+
+          <div class="product-image-container">
+            <img
+              [src]="'https://picsum.photos/seed/' + product.id + '/600/500'"
+              [alt]="product.name"
+              class="product-image"
+            />
+            <button class="quick-view">Quick View</button>
+          </div>
+
+          <div class="product-details">
+            <span class="product-category">{{ product.category }}</span>
+            <h3 class="product-name">{{ product.name }}</h3>
+            <p class="product-description">{{ product.description }}</p>
+
+            <div class="product-meta">
+              <div class="product-rating-section">
+                <span class="rating-stars">{{ getRatingStars(product.rating) }}</span>
+                <span class="rating-count">({{ getReviewCount(product.reviews) }})</span>
+              </div>
+            </div>
+
+            <div class="product-footer">
+              <div class="product-price-section">
+                <span class="price-label">Price</span>
+                <span class="product-price">${{ parseFloat(product.price).toFixed(2) }}</span>
+              </div>
+              <button class="add-to-cart-btn">
+                <span>🛒</span>
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h4>About Angular Luxe</h4>
+            <p>Premium e-commerce experience powered by Angular & Symulate SDK</p>
+          </div>
+          <div class="footer-section">
+            <h4>Quick Links</h4>
+            <a href="#">Products</a>
+            <a href="#">Categories</a>
+            <a href="#">About Us</a>
+            <a href="#">Contact</a>
+          </div>
+          <div class="footer-section">
+            <h4>Follow Us</h4>
+            <p>Stay connected for exclusive deals</p>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <p>Built with Angular 18 & Symulate SDK</p>
+        </div>
+      </div>
+    </footer>
+  </ng-container>
+</div>
