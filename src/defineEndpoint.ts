@@ -23,10 +23,20 @@ if (!(globalThis as any)[currentFileKey]) {
 }
 
 /**
+ * Normalize file path to use forward slashes (cross-platform consistency)
+ * Converts Windows backslashes to forward slashes
+ */
+function normalizePath(filepath: string | null): string | null {
+  if (!filepath) return filepath;
+  // Replace all backslashes with forward slashes for cross-platform consistency
+  return filepath.replace(/\\/g, '/');
+}
+
+/**
  * Set the current file being loaded (called by loadEndpoints)
  */
 export function setCurrentFile(filename: string | null) {
-  (globalThis as any)[currentFileKey] = filename;
+  (globalThis as any)[currentFileKey] = normalizePath(filename);
 }
 
 /**

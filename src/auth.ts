@@ -249,9 +249,10 @@ async function pollAuthStatus(sessionToken: string, maxAttempts = 60): Promise<A
             email: data.email,
             expiresAt: data.expiresAt,
             accessToken: data.accessToken,
-            // Prioritize: 1) previous session context, 2) server defaults, 3) undefined
-            currentOrgId: previousContext.orgId || data.defaultOrgId,
-            currentProjectId: previousContext.projectId || data.defaultProjectId,
+            // Prioritize: 1) server defaults (current system), 2) previous session context (if no server default), 3) undefined
+            // This ensures switching between Supabase instances uses the correct org/project
+            currentOrgId: data.defaultOrgId || previousContext.orgId,
+            currentProjectId: data.defaultProjectId || previousContext.projectId,
           };
         }
       }

@@ -83,16 +83,26 @@ export type ValidatedEndpointConfig<T, Path extends string = string, Params exte
     : { __pathParamValidationError: ValidatePathParams<Path, Params> });
 
 export interface MockendConfig {
-  symulateApiKey?: string; // Mockend Platform API key (sym_live_xxx) - get yours at https://platform.symulate.dev
-  projectId?: string; // Project ID for multi-project isolation (get from https://platform.symulate.dev)
+  // Mockend Platform API key (sym_live_xxx) - get yours at https://platform.symulate.dev
+  symulateApiKey?: string;
+  // Project ID for multi-project isolation (get from https://platform.symulate.dev)
+  projectId?: string;
+  // If environment is production, Symulate will send endpoint requests here.
   backendBaseUrl?: string;
+  // ```development``` = Mock data mode, ```production``` = Real API mode
   environment?: "development" | "production";
+  // Enable smart caching for faster requests and saving tokens. If you request mock data for the same schema, the last cached response will be used. If your schema changes, new data will be generated. Manage caches with ```npx symulate cache```
   cacheEnabled?: boolean;
-  persistentCache?: boolean; // Use localStorage in browser to persist cache across reloads (default: false)
-  generateMode?: GenerateMode; // "ai" = always use AI, "faker" = pure Faker.js (CI/CD), "auto" = try AI then fallback (default: "auto")
-  fakerSeed?: number; // Seed for deterministic Faker.js generation (useful for reproducible tests in CI/CD)
-  language?: string; // Language for AI-generated data (e.g., "en", "es", "fr", "de", "ja", "zh"). Premium feature - only works with AI mode (generateMode: "ai" or "auto"). Faker mode always generates English data.
-  regenerateOnConfigChange?: boolean; // When true, cache is invalidated when endpoint config changes (method, mock.count, mock.instruction, etc.). Default: true
+  // Use localStorage in browser to persist cache across reloads (default: false)
+  persistentCache?: boolean;
+  // "ai" = always use AI, "faker" = pure Faker.js (CI/CD), "auto" = try AI then fallback (default: "auto")
+  generateMode?: GenerateMode;
+  // Seed for deterministic Faker.js generation (useful for reproducible tests in CI/CD)
+  fakerSeed?: number;
+  // Language for AI-generated data (e.g., "en", "es", "fr", "de", "ja", "zh"). Premium feature - only works with AI mode (generateMode: "ai" or "auto"). Faker mode always generates English data.
+  language?: string;
+  // When true, cache is invalidated when endpoint config changes (method, mock.count, mock.instruction, etc.). Default: true
+  regenerateOnConfigChange?: boolean;
 }
 
 export interface CachedTemplate {

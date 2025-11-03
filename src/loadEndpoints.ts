@@ -81,44 +81,6 @@ async function expandGlobPatterns(patterns: string[], cwd: string): Promise<stri
 }
 
 /**
- * Enable TypeScript execution using tsx
- */
-let tsxEnabled = false;
-function enableTypeScriptExecution() {
-  if (tsxEnabled) return;
-
-  try {
-    // Try modern tsx v4+ API first
-    try {
-      require('tsx/cjs');
-      tsxEnabled = true;
-
-      if (IS_DEBUG) {
-        console.log('[Symulate] TypeScript execution enabled (tsx v4+)');
-      }
-      return;
-    } catch (e) {
-      // Fall back to older API
-      const tsx = require('tsx/cjs/api');
-      if (typeof tsx.register === 'function') {
-        tsx.register();
-      } else if (typeof tsx === 'function') {
-        tsx();
-      }
-      tsxEnabled = true;
-
-      if (IS_DEBUG) {
-        console.log('[Symulate] TypeScript execution enabled (tsx legacy)');
-      }
-    }
-  } catch (error: any) {
-    console.warn('[Symulate] Warning: Could not enable TypeScript execution:', error.message);
-    console.warn('[Symulate] Please install tsx: npm install tsx');
-    console.warn('[Symulate] Or ensure TypeScript files are compiled to JavaScript before running sync.');
-  }
-}
-
-/**
  * Load endpoint definitions from configured entry files or scan the project
  */
 export async function loadEndpoints(): Promise<number> {
@@ -139,40 +101,50 @@ export async function loadEndpoints(): Promise<number> {
       return 0;
     }
 
-    // Check if any files are TypeScript - if so, enable TypeScript execution
-    const hasTypeScript = entryFiles.some(isTypeScriptFile);
-    if (hasTypeScript) {
-      enableTypeScriptExecution();
-    }
-
     console.log(`[Symulate] Found ${entryFiles.length} file(s) to load`);
 
     let loadedCount = 0;
     for (const entryPath of entryFiles) {
       try {
-        if (IS_DEBUG) {
-          console.log(`[Symulate] Loading: ${path.relative(cwd, entryPath)}`);
-        }
+        console.log(`[Symulate] Loading: ${path.relative(cwd, entryPath)}`);
 
         // Set the current file context before importing
         const { setCurrentFile } = await import('./defineEndpoint');
         const relativeFilename = path.relative(cwd, entryPath);
         setCurrentFile(relativeFilename);
 
-        // For TypeScript files with tsx enabled, use require (tsx hooks work with require)
-        // For JavaScript files, use dynamic import
-        if (isTypeScriptFile(entryPath) && tsxEnabled) {
-          if (IS_DEBUG) {
-            console.log(`[Symulate] Requiring (tsx): ${entryPath}`);
+        // For TypeScript files, compile on-the-fly and then import
+        let fileToImport = entryPath;
+        if (isTypeScriptFile(entryPath)) {
+          try {
+            // Use esbuild to transpile TypeScript to JavaScript
+            const { transform } = require('esbuild');
+            const tsCode = fs.readFileSync(entryPath, 'utf-8');
+
+            const result = await transform(tsCode, {
+              loader: 'ts',
+              format: 'esm',
+              target: 'node16',
+              sourcefile: entryPath,
+            });
+
+            // Write transpiled code to temp file
+            const tmpFile = entryPath.replace(/\.ts$/, '.tmp.mjs');
+            fs.writeFileSync(tmpFile, result.code);
+            fileToImport = tmpFile;
+
+            // Import the transpiled file
+            const fileUrl = pathToFileURL(fileToImport).href;
+            await import(fileUrl);
+
+            // Clean up temp file
+            fs.unlinkSync(tmpFile);
+          } catch (error: any) {
+            throw new Error(`TypeScript compilation failed: ${error.message}`);
           }
-          // Clear require cache to allow re-loading
-          delete require.cache[require.resolve(entryPath)];
-          require(entryPath);
         } else {
-          const fileUrl = pathToFileURL(entryPath).href;
-          if (IS_DEBUG) {
-            console.log(`[Symulate] Importing: ${fileUrl}`);
-          }
+          // For JavaScript files, import directly
+          const fileUrl = pathToFileURL(fileToImport).href;
           await import(fileUrl);
         }
 

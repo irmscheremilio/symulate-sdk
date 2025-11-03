@@ -45,6 +45,7 @@ export interface StringSchema extends BaseSchema<string> {
     schemaType: SchemaType;
     description?: string;
     dbReference?: {
+      schema?: string;
       table: string;
       column: string;
     };
@@ -56,6 +57,7 @@ export interface NumberSchema extends BaseSchema<number> {
     schemaType: "number" | "commerce.price";
     description?: string;
     dbReference?: {
+      schema?: string;
       table: string;
       column: string;
     };
@@ -67,6 +69,7 @@ export interface BooleanSchema extends BaseSchema<boolean> {
     schemaType: "boolean";
     description?: string;
     dbReference?: {
+      schema?: string;
       table: string;
       column: string;
     };
@@ -93,7 +96,7 @@ export interface ArraySchema<T> extends BaseSchema<T[]> {
 export type Infer<T extends BaseSchema> = T["_type"];
 
 // Schema builders
-class SchemaBuilder {
+export class SchemaBuilder {
   // Primitive types
   uuid(description?: string): StringSchema {
     return {
@@ -248,32 +251,55 @@ class SchemaBuilder {
   };
 
   // Database type reference
-  db(
-    tableDotColumn: string,
+  /**
+   * Reference a database column with type-safety and autocomplete
+   * @param dbPath - Database path in format "table.column" or "schema.table.column"
+   * @param description - Optional AI instruction for this field
+   * @example
+   * // Import database types file to enable autocomplete
+   * import './types/database'
+   * m.db('users.email', 'User email address')
+   * m.db('public.users.email', 'User email (with schema)')
+   */
+  db<T extends string = string>(
+    dbPath: T,
     description?: string
   ): StringSchema | NumberSchema | BooleanSchema {
-    const parts = tableDotColumn.split(".");
+    const parts = dbPath.split(".");
 
-    if (parts.length !== 2) {
+    // Support both formats:
+    // - "table.column" (2 parts)
+    // - "schema.table.column" (3 parts, Postgres style)
+    if (parts.length !== 2 && parts.length !== 3) {
       throw new Error(
-        `Invalid db reference format. Expected "table.column", got "${tableDotColumn}"`
+        `Invalid db reference format. Expected "table.column" or "schema.table.column", got "${dbPath}"`
       );
     }
 
-    const [table, column] = parts;
+    let schema: string | undefined;
+    let table: string;
+    let column: string;
 
-    // Try to load database types from imported file
-    let dbType: string | undefined;
-    try {
-      // This will be populated when user runs import-schema command
-      const { DatabaseTypes } = require("./databaseTypes");
-      dbType = DatabaseTypes?.[table]?.[column];
-    } catch {
-      // DatabaseTypes not imported yet, will use generic type
+    if (parts.length === 3) {
+      // schema.table.column format
+      [schema, table, column] = parts;
+    } else {
+      // table.column format
+      [table, column] = parts;
     }
+
+    // Database types would need to be loaded from user's project, not from SDK
+    // For now, we'll just use a generic string type
+    // TODO: Implement a way to load database types from user's project at runtime
+    let dbType: string | undefined;
 
     // Map database type to schema type
     const schemaType = mapDbTypeToSchemaType(dbType || "string");
+
+    // Build dbReference object
+    const dbReference = schema
+      ? { schema, table, column }
+      : { table, column };
 
     // Return appropriate schema based on inferred type
     if (
@@ -285,7 +311,7 @@ class SchemaBuilder {
         _meta: {
           schemaType: "number",
           description,
-          dbReference: { table, column },
+          dbReference,
         },
       };
     }
@@ -296,7 +322,7 @@ class SchemaBuilder {
         _meta: {
           schemaType: "boolean",
           description,
-          dbReference: { table, column },
+          dbReference,
         },
       };
     }
@@ -307,7 +333,7 @@ class SchemaBuilder {
       _meta: {
         schemaType: dbType ? mapDbTypeToSchemaType(dbType) : "string",
         description,
-        dbReference: { table, column },
+        dbReference,
       },
     };
   }

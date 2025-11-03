@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Suppress the punycode deprecation warning (comes from bundled dependencies)
+process.removeAllListeners('warning');
+
 import { Command } from "commander";
 import * as path from "path";
 import { generateOpenAPISpec, saveOpenAPISpec } from "./openapi";
@@ -488,7 +491,7 @@ program
 program
   .command("import-schema")
   .description("Import database schema types from Symulate Platform")
-  .option("-o, --output <path>", "Output file path", "./src/types/database.ts")
+  .option("-o, --output <path>", "Output file path", "./src/types/database.d.ts")
   .option("--schema-name <name>", "Specific schema name to import")
   .option("--update", "Update existing file instead of creating new one")
   .action(async (options) => {

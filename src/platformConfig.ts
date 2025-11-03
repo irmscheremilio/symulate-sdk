@@ -1,26 +1,47 @@
 /**
  * Platform and API configuration
  * Central location for all Supabase and platform-related constants
+ *
+ * Environment Variables (optional, for local development):
+ * - SYMULATE_PLATFORM_URL: Override platform URL
+ * - SYMULATE_SUPABASE_URL: Override Supabase URL
+ * - SYMULATE_SUPABASE_ANON_KEY: Override Supabase anon key
+ *
+ * For local development, create a .env.local file in the SDK root:
+ * SYMULATE_PLATFORM_URL=http://localhost:3000
+ * SYMULATE_SUPABASE_URL=http://localhost:54321
+ * SYMULATE_SUPABASE_ANON_KEY=your-local-anon-key
  */
 
 import { createClient } from "@supabase/supabase-js";
 
+// Production defaults
+const PROD_PLATFORM_URL = "https://platform.symulate.dev";
+const PROD_SUPABASE_URL = "https://ptrjfelueuglvsdsqzok.supabase.co";
+const PROD_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0cmpmZWx1ZXVnbHZzZHNxem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjcyMDQsImV4cCI6MjA3NjMwMzIwNH0.pNF6fk1tC03xrsmp2r4e5uouvqOQgRFcj4BbsTI8TnU";
+
+// Runtime configuration (can be overridden via env vars at build time)
+// The process.env values will be replaced by tsup's define option during build
+const platformUrl = (typeof process !== 'undefined' && process.env.SYMULATE_PLATFORM_URL) || PROD_PLATFORM_URL;
+const supabaseUrl = (typeof process !== 'undefined' && process.env.SYMULATE_SUPABASE_URL) || PROD_SUPABASE_URL;
+const supabaseAnonKey = (typeof process !== 'undefined' && process.env.SYMULATE_SUPABASE_ANON_KEY) || PROD_SUPABASE_ANON_KEY;
+
 export const PLATFORM_CONFIG = {
   // Platform URLs
-  platformUrl: "https://platform.symulate.dev",
+  platformUrl,
 
   // Supabase configuration
   supabase: {
-    url: "https://ptrjfelueuglvsdsqzok.supabase.co",
-    anonKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0cmpmZWx1ZXVnbHZzZHNxem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjcyMDQsImV4cCI6MjA3NjMwMzIwNH0.pNF6fk1tC03xrsmp2r4e5uouvqOQgRFcj4BbsTI8TnU",
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
   },
 
-  // API endpoints
+  // API endpoints (derived from supabase URL)
   api: {
-    authPoll: "https://ptrjfelueuglvsdsqzok.supabase.co/functions/v1/auth-poll",
-    rest: "https://ptrjfelueuglvsdsqzok.supabase.co/rest/v1",
+    authPoll: `${supabaseUrl}/functions/v1/auth-poll`,
+    rest: `${supabaseUrl}/rest/v1`,
   },
-} as const;
+};
 
 /**
  * Get a Supabase client with authentication token

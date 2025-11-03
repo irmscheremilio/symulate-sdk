@@ -1381,6 +1381,17 @@ try {
 }
 ```
 
+## Local Development
+
+Developing or testing the SDK with local/test Supabase instances? See **[DEVELOPMENT.md](DEVELOPMENT.md)** for instructions on using environment variables to override production URLs.
+
+**Quick start:**
+```bash
+cp .env.example .env.local
+# Edit .env.local with your test credentials
+npm run build
+```
+
 ## Documentation
 
 For full documentation, visit the [main repository](https://github.com/yourusername/Symulate).

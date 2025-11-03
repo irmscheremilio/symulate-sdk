@@ -3,5 +3,5 @@ export { configureSymulate, getConfig, isDevelopment, isProduction, clearQuotaSt
 export { clearCache, debugCache } from "./cache";
 export { TypeValidationError } from "./validator";
 export * from "./types";
-export { m, type Infer, type BaseSchema, type ObjectSchema, type ArraySchema } from "./schema";
+export { m, SchemaBuilder, type Infer, type BaseSchema, type ObjectSchema, type ArraySchema } from "./schema";
 export type { GenerateMode } from "./types";
