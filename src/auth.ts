@@ -341,16 +341,98 @@ export async function login(): Promise<boolean> {
     saveAuthSession(session);
     console.log(`\n[Symulate] ✓ Successfully authenticated as ${session.email}`);
 
-    // Show auto-selected org/project
+    // Fetch and show org/project names
     if (session.currentOrgId && session.currentProjectId) {
-      console.log(`[Symulate] ✓ Auto-selected organization and project`);
-      console.log(`[Symulate]   Organization ID: ${session.currentOrgId}`);
-      console.log(`[Symulate]   Project ID: ${session.currentProjectId}`);
+      try {
+        const authHeader = session.accessToken
+          ? `Bearer ${session.accessToken}`
+          : `Bearer ${PLATFORM_CONFIG.supabase.anonKey}`;
+
+        // Fetch organization details
+        const orgResponse = await fetch(
+          `${PLATFORM_CONFIG.api.rest}/organization_members?select=role,organizations(name,slug)&organization_id=eq.${session.currentOrgId}&user_id=eq.${session.userId}`,
+          {
+            headers: {
+              apikey: PLATFORM_CONFIG.supabase.anonKey,
+              Authorization: authHeader,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        // Fetch project details
+        const projectResponse = await fetch(
+          `${PLATFORM_CONFIG.api.rest}/projects?id=eq.${session.currentProjectId}&select=name,slug`,
+          {
+            headers: {
+              apikey: PLATFORM_CONFIG.supabase.anonKey,
+              Authorization: authHeader,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        let orgName = session.currentOrgId;
+        let projectName = session.currentProjectId;
+
+        if (orgResponse.ok) {
+          const orgData = (await orgResponse.json()) as any[];
+          if (orgData.length > 0 && orgData[0].organizations) {
+            const org = Array.isArray(orgData[0].organizations)
+              ? orgData[0].organizations[0]
+              : orgData[0].organizations;
+            orgName = `${org.name} (${org.slug})`;
+          }
+        }
+
+        if (projectResponse.ok) {
+          const projectData = (await projectResponse.json()) as any[];
+          if (projectData.length > 0) {
+            projectName = `${projectData[0].name} (${projectData[0].slug})`;
+          }
+        }
+
+        console.log(`[Symulate] ✓ Auto-selected organization and project`);
+        console.log(`[Symulate]   Organization: ${orgName}`);
+        console.log(`[Symulate]   Project: ${projectName}`);
+      } catch (error) {
+        console.log(`[Symulate] ✓ Auto-selected organization and project`);
+        console.log(`[Symulate]   Organization ID: ${session.currentOrgId}`);
+        console.log(`[Symulate]   Project ID: ${session.currentProjectId}`);
+      }
       console.log(`\n[Symulate] 💡 Tip: You can switch organizations or projects anytime:`);
       console.log(`[Symulate]   • npx symulate orgs list`);
       console.log(`[Symulate]   • npx symulate projects list`);
     } else if (session.currentOrgId) {
-      console.log(`[Symulate] ✓ Auto-selected organization: ${session.currentOrgId}`);
+      try {
+        const authHeader = session.accessToken
+          ? `Bearer ${session.accessToken}`
+          : `Bearer ${PLATFORM_CONFIG.supabase.anonKey}`;
+
+        const orgResponse = await fetch(
+          `${PLATFORM_CONFIG.api.rest}/organizations?id=eq.${session.currentOrgId}&select=name,slug`,
+          {
+            headers: {
+              apikey: PLATFORM_CONFIG.supabase.anonKey,
+              Authorization: authHeader,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+
+        if (orgResponse.ok) {
+          const orgs = (await orgResponse.json()) as any[];
+          if (orgs.length > 0) {
+            console.log(`[Symulate] ✓ Auto-selected organization: ${orgs[0].name} (${orgs[0].slug})`);
+          } else {
+            console.log(`[Symulate] ✓ Auto-selected organization: ${session.currentOrgId}`);
+          }
+        } else {
+          console.log(`[Symulate] ✓ Auto-selected organization: ${session.currentOrgId}`);
+        }
+      } catch (error) {
+        console.log(`[Symulate] ✓ Auto-selected organization: ${session.currentOrgId}`);
+      }
       console.log(`[Symulate] ⚠️  No projects found. Create one at https://platform.symulate.dev/dashboard/projects`);
     } else {
       console.log(`[Symulate] ⚠️  No organizations found. One should be created automatically.`);
@@ -396,8 +478,9 @@ export async function whoami(): Promise<void> {
         ? `Bearer ${session.accessToken}`
         : `Bearer ${PLATFORM_CONFIG.supabase.anonKey}`;
 
+      // Fetch organization details with user role
       const orgResponse = await fetch(
-        `${PLATFORM_CONFIG.api.rest}/organizations?id=eq.${session.currentOrgId}&select=name,slug`,
+        `${PLATFORM_CONFIG.api.rest}/organization_members?select=role,organizations(name,slug)&organization_id=eq.${session.currentOrgId}&user_id=eq.${session.userId}`,
         {
           headers: {
             apikey: PLATFORM_CONFIG.supabase.anonKey,
@@ -408,11 +491,15 @@ export async function whoami(): Promise<void> {
       );
 
       if (orgResponse.ok) {
-        const orgs = (await orgResponse.json()) as any[];
-        if (orgs.length > 0) {
-          const org = orgs[0];
+        const orgData = (await orgResponse.json()) as any[];
+        if (orgData.length > 0 && orgData[0].organizations) {
+          const org = Array.isArray(orgData[0].organizations)
+            ? orgData[0].organizations[0]
+            : orgData[0].organizations;
+          const role = orgData[0].role;
           console.log(`  Current Organization: ${org.name} (${org.slug})`);
           console.log(`    ID: ${session.currentOrgId}`);
+          console.log(`    Your Role: ${role}`);
         } else {
           console.log(`  Current Organization: ${session.currentOrgId}`);
         }

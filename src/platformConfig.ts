@@ -15,17 +15,17 @@
 
 import { createClient } from "@supabase/supabase-js";
 
-// Production defaults
-const PROD_PLATFORM_URL = "https://platform.symulate.dev";
-const PROD_SUPABASE_URL = "https://ptrjfelueuglvsdsqzok.supabase.co";
-const PROD_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0cmpmZWx1ZXVnbHZzZHNxem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjcyMDQsImV4cCI6MjA3NjMwMzIwNH0.pNF6fk1tC03xrsmp2r4e5uouvqOQgRFcj4BbsTI8TnU";
-
 // Build-time configuration (replaced by tsup's define option during build)
 // These process.env values are replaced with string literals at build time
 // No need to check typeof process - the values are baked in as strings
-const platformUrl = process.env.SYMULATE_PLATFORM_URL || PROD_PLATFORM_URL;
-const supabaseUrl = process.env.SYMULATE_SUPABASE_URL || PROD_SUPABASE_URL;
-const supabaseAnonKey = process.env.SYMULATE_SUPABASE_ANON_KEY || PROD_SUPABASE_ANON_KEY;
+
+const PROD_PLATFORM_URL = 'https://platform.symulate.dev';
+const PROD_SUPABASE_URL = 'https://ptrjfelueuglvsdsqzok.supabase.co';
+const PROD_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0cmpmZWx1ZXVnbHZzZHNxem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjcyMDQsImV4cCI6MjA3NjMwMzIwNH0.pNF6fk1tC03xrsmp2r4e5uouvqOQgRFcj4BbsTI8TnU';
+
+const platformUrl = process.env.SYMULATE_PLATFORM_URL!;
+const supabaseUrl = process.env.SYMULATE_SUPABASE_URL!;
+const supabaseAnonKey = process.env.SYMULATE_SUPABASE_ANON_KEY!;
 
 export const PLATFORM_CONFIG = {
   // Platform URLs

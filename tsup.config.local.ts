@@ -6,14 +6,14 @@ import path from 'path';
 dotenv.config({ path: path.resolve(__dirname, '.env.local') });
 
 // Production defaults (fallback if .env.local doesn't have values)
-const PROD_PLATFORM_URL = 'https://platform.symulate.dev';
-const PROD_SUPABASE_URL = 'https://ptrjfelueuglvsdsqzok.supabase.co';
-const PROD_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0cmpmZWx1ZXVnbHZzZHNxem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjcyMDQsImV4cCI6MjA3NjMwMzIwNH0.pNF6fk1tC03xrsmp2r4e5uouvqOQgRFcj4BbsTI8TnU';
+const TEST_PLATFORM_URL = 'http://localhost:3000';
+const TEST_SUPABASE_URL = 'https://netmjvmgcqoganmubxrp.supabase.co';
+const TEST_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ldG1qdm1nY3FvZ2FubXVieHJwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE1MjIwMjYsImV4cCI6MjA3NzA5ODAyNn0.psJ-ZFAL5T0SJnjilIlmUZbrgZdDA9xIf-7W5Xw8KQk';
 
 // Get environment variables with proper fallback to production defaults
-const getPlatformUrl = () => process.env.SYMULATE_PLATFORM_URL || PROD_PLATFORM_URL;
-const getSupabaseUrl = () => process.env.SYMULATE_SUPABASE_URL || PROD_SUPABASE_URL;
-const getSupabaseAnonKey = () => process.env.SYMULATE_SUPABASE_ANON_KEY || PROD_SUPABASE_ANON_KEY;
+const getPlatformUrl = () => process.env.SYMULATE_PLATFORM_URL || TEST_PLATFORM_URL;
+const getSupabaseUrl = () => process.env.SYMULATE_SUPABASE_URL || TEST_SUPABASE_URL;
+const getSupabaseAnonKey = () => process.env.SYMULATE_SUPABASE_ANON_KEY || TEST_SUPABASE_ANON_KEY;
 
 export default defineConfig({
   entry: ['src/index.ts', 'src/cli/index.ts'],
