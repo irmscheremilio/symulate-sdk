@@ -109,8 +109,17 @@ export function defineEndpoint<T>(
   }
 
   return async (params?: Record<string, any>): Promise<T> => {
-    // Validate parameters before processing
-    validateParameters(config, params);
+    // Extract runtime metadata from params (if provided) before validation
+    const runtimeMetadata = params?.metadata as Record<string, any> | undefined;
+
+    // Remove metadata from params so it doesn't interfere with parameter validation
+    const cleanParams = params ? { ...params } : undefined;
+    if (cleanParams && 'metadata' in cleanParams) {
+      delete cleanParams.metadata;
+    }
+
+    // Validate parameters (without metadata)
+    validateParameters(config, cleanParams);
 
     // Check if endpoint has a mode override, otherwise fall back to global environment
     const shouldUseMock = config.mode === "mock"
@@ -120,9 +129,9 @@ export function defineEndpoint<T>(
         : isDevelopment(); // Use global environment if no mode specified
 
     if (shouldUseMock) {
-      return generateMockData<T>(config, params);
+      return generateMockData<T>(config, cleanParams, runtimeMetadata);
     } else {
-      return callRealBackend<T>(config, params);
+      return callRealBackend<T>(config, cleanParams);
     }
   };
 }
@@ -139,7 +148,11 @@ function interpolateVariables(template: string, params: Record<string, any>): st
   });
 }
 
-async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<string, any>): Promise<T> {
+async function generateMockData<T>(
+  config: EndpointConfig<T>,
+  params?: Record<string, any>,
+  runtimeMetadata?: Record<string, any>
+): Promise<T> {
   const globalConfig = getConfig();
 
   // Check if any error has failNow flag set to true
@@ -160,6 +173,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
             schema: failNowError.schema,
             instruction: failNowError.description || `Generate error response for ${failNowError.code}`,
             typeDescription: schemaToTypeDescription(failNowError.schema),
+            metadata: config.mock?.metadata,
           });
         } catch (error) {
           // Fallback to Faker if AI fails
@@ -212,12 +226,21 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
     ? interpolateVariables(config.mock.instruction, params || {})
     : undefined;
 
+  // Merge configured metadata with runtime metadata (runtime takes precedence)
+  const configMetadata = config.mock?.metadata || {};
+  const metadata = runtimeMetadata
+    ? { ...configMetadata, ...runtimeMetadata }
+    : Object.keys(configMetadata).length > 0
+      ? configMetadata
+      : undefined;
+
   // Build the schema object for hashing (determines if we need to regenerate)
   const typeDescription = schemaToTypeDescription(config.schema);
   const schemaForHash: any = {
     typeDescription,
     count,
     instruction, // Use interpolated instruction
+    metadata, // Include metadata in hash
     path: config.path,
     mode: generateMode, // Include mode in hash to separate AI vs Faker cache
     params, // Include params in hash for unique caching per parameter combination
@@ -295,6 +318,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
         schema: schemaForHash,
         instruction,
         typeDescription,
+        metadata,
       });
 
       // Cache the generated data
@@ -346,6 +370,7 @@ async function generateMockData<T>(config: EndpointConfig<T>, params?: Record<st
         schema: schemaForHash,
         instruction,
         typeDescription,
+        metadata,
       });
 
       // Cache the generated data

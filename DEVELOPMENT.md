@@ -4,18 +4,33 @@ This guide explains how to develop and test the SDK locally without accidentally
 
 ## Environment Configuration
 
-The SDK uses **environment variables** to allow testing with local or test Supabase instances, while defaulting to production URLs when deployed.
+The SDK uses **two environment files** and **two build scripts** to allow easy switching between production and test environments:
+
+1. **`.env.production`** - Production Supabase URLs (committed to git)
+2. **`.env.local`** - Test/local overrides (gitignored, never committed)
 
 ### How It Works
 
-1. **Production (default)**: Uses hardcoded production URLs in `src/platformConfig.ts`
-2. **Development**: Overrides URLs via environment variables in `.env.local`
-y
-This means:
-- ✅ No manual code changes needed between dev and prod
-- ✅ `.env.local` is gitignored, so it never gets committed
-- ✅ Production builds automatically use production URLs
-- ✅ You'll never forget to change URLs back before publishing
+The SDK has two separate build configurations:
+
+**Production Build** (`npm run build`):
+- Uses `tsup.config.ts`
+- Loads `.env.production`
+- Bakes production URLs into the bundle
+- Used for npm publishing
+
+**Local/Development Build** (`npm run build:local`):
+- Uses `tsup.config.local.ts`
+- Loads `.env.local`
+- Bakes test/local URLs into the bundle
+- Used for local development and testing
+
+Environment variables are **baked into the bundle at build time** using tsup's `define` option. This means:
+- ✅ **Use `npm run build:local` for development** - uses test URLs
+- ✅ **Use `npm run build` for production** - uses production URLs
+- ✅ `.env.local` is gitignored - never accidentally commit test URLs
+- ✅ Production URLs stay in `.env.production` - safe defaults
+- ✅ No runtime environment variable checking - values are compiled in
 
 ## Setup for Local Development
 
@@ -40,15 +55,15 @@ SYMULATE_SUPABASE_URL=https://your-test-project.supabase.co
 SYMULATE_SUPABASE_ANON_KEY=eyJhbGciOi...your-test-anon-key
 ```
 
-### 3. Build the SDK
+### 3. Build the SDK for Local Development
 
 ```bash
-npm run build
+npm run build:local
 ```
 
 You'll see: `[dotenv] injecting env (3) from .env.local`
 
-This confirms your environment variables are being loaded! ✅
+This confirms your local environment variables are being loaded and baked into the bundle! ✅
 
 ### 4. Test with Angular or Other Projects
 
@@ -58,6 +73,16 @@ The built SDK will now use your test URLs:
 cd ../symulate-angluar-dev
 npm start
 ```
+
+**⚠️ Important**: If Angular is still using old URLs after rebuilding the SDK, clear Angular's cache:
+
+```bash
+cd ../symulate-angluar-dev
+rm -rf .angular/cache dist
+npm start
+```
+
+Angular caches compiled modules, so after changing the SDK you need to clear its cache for changes to take effect.
 
 ## Available Environment Variables
 
@@ -69,23 +94,38 @@ npm start
 
 ## Development Workflow
 
+### Important: Always Use build:local for Development
+
+When developing and testing the SDK locally, always use:
+
+```bash
+npm run build:local
+```
+
+This ensures the bundle uses your test URLs from `.env.local`. Using `npm run build` will bake in production URLs!
+
 ### Testing with Local Supabase
 
 If you're running Supabase locally:
 
 ```bash
 # Start local Supabase
-supabase start
+temp start
 
 # Check your local anon key
-supabase status
+temp status
 ```
 
 Update `.env.local`:
 ```bash
 SYMULATE_PLATFORM_URL=http://localhost:3000
 SYMULATE_SUPABASE_URL=http://localhost:54321
-SYMULATE_SUPABASE_ANON_KEY=<anon-key-from-supabase-status>
+SYMULATE_SUPABASE_ANON_KEY=<anon-key-from-temp-status>
+```
+
+Then rebuild:
+```bash
+npm run build:local
 ```
 
 ### Testing with Test Supabase Project
@@ -95,49 +135,46 @@ SYMULATE_SUPABASE_ANON_KEY=<anon-key-from-supabase-status>
 3. Go to **Settings → API**
 4. Copy the **URL** and **anon/public key**
 5. Paste into `.env.local`
+6. Rebuild: `npm run build:local`
 
 ### Switching Back to Production
 
-**Option 1: Delete the file**
+To build for production (e.g., before publishing to npm):
+
 ```bash
-rm .env.local
 npm run build
 ```
 
-**Option 2: Comment out the values**
-```bash
-# Leave empty to use production defaults
-# SYMULATE_PLATFORM_URL=
-# SYMULATE_SUPABASE_URL=
-# SYMULATE_SUPABASE_ANON_KEY=
-```
+This uses `.env.production` and ignores `.env.local` completely. You don't need to delete or modify `.env.local`!
 
 ## Publishing to npm
 
-Before publishing, ensure you're using production URLs:
+Before publishing, use the production build:
 
 ```bash
-# Option 1: Delete .env.local
-rm .env.local
-
-# Option 2: Temporarily rename it
-mv .env.local .env.local.backup
-
-# Build and publish
 npm run build
 npm publish
-
-# Restore for development
-mv .env.local.backup .env.local
 ```
 
-**Important**: The `.gitignore` already excludes `.env.local`, so it won't be committed to git or included in the npm package.
+The `prepublishOnly` script automatically runs `npm run build`, which uses production URLs from `.env.production`.
+
+**Important**: The `.gitignore` already excludes `.env.local`, so it won't be committed to git or included in the npm package. You can keep `.env.local` for local development - it won't interfere with production builds.
 
 ## Troubleshooting
 
 ### "My build still uses production URLs"
 
-Check that `.env.local` exists and has values:
+Make sure you're using the correct build script:
+
+```bash
+# ❌ Wrong - uses production URLs
+npm run build
+
+# ✅ Correct - uses local URLs
+npm run build:local
+```
+
+Also verify `.env.local` exists and has values:
 ```bash
 cat .env.local
 ```
@@ -147,6 +184,18 @@ You should see your custom URLs. If the file doesn't exist, create it:
 cp .env.example .env.local
 # Then edit with your values
 ```
+
+### "Angular still shows old URLs after rebuilding SDK"
+
+After rebuilding the SDK with `npm run build:local`, you need to clear Angular's cache:
+
+```bash
+cd ../symulate-angular-dev
+rm -rf .angular/cache dist
+npm start
+```
+
+Angular caches compiled modules, so changes to linked packages require a cache clear.
 
 ### "I accidentally committed .env.local"
 
@@ -167,24 +216,30 @@ npm install --save-dev dotenv
 
 ### How Environment Variables Are Loaded
 
-1. **Build Time**: `tsup.config.ts` loads `.env.local` via dotenv
-2. **Runtime**: `platformConfig.ts` checks `process.env` and `import.meta.env`
-3. **Fallback**: If no env vars are set, uses production defaults
+1. **Build Time**:
+   - `npm run build` uses `tsup.config.ts` which loads `.env.production`
+   - `npm run build:local` uses `tsup.config.local.ts` which loads `.env.local`
+2. **Replacement**: tsup's `define` option replaces `process.env.SYMULATE_*` with actual values
+3. **Bundling**: The bundler optimizes expressions and inlines constants
+4. **Result**: No runtime environment checks - values are hardcoded in the bundle
 
 ### Code Location
 
 - **Configuration**: `src/platformConfig.ts`
-- **Build config**: `tsup.config.ts`
-- **Environment template**: `.env.example`
+- **Production build config**: `tsup.config.ts`
+- **Local build config**: `tsup.config.local.ts`
+- **Production environment**: `.env.production` (committed)
+- **Local environment template**: `.env.example`
 - **Your local config**: `.env.local` (gitignored)
 
 ## Best Practices
 
-1. ✅ **Always use `.env.local` for testing** - Never modify `platformConfig.ts` directly
+1. ✅ **Always use `npm run build:local` for development** - Never use `npm run build` during local dev
 2. ✅ **Keep `.env.local` secret** - Contains your test project credentials
 3. ✅ **Use a dedicated test Supabase project** - Don't test against production
-4. ✅ **Verify before publishing** - Check that `.env.local` is not active
-5. ✅ **Document your test project** - Keep notes on which Supabase project is for testing
+4. ✅ **Clear Angular cache after SDK changes** - Run `rm -rf .angular/cache dist` in Angular app
+5. ✅ **Use `npm run build` for publishing** - Automatically uses production URLs
+6. ✅ **Document your test project** - Keep notes on which Supabase project is for testing
 
 ## Questions?
 

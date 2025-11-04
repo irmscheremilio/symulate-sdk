@@ -8,6 +8,7 @@ export interface MockConfig {
   count?: number;
   instruction?: string;
   delay?: number; // Simulated loading delay in milliseconds (only for cached data)
+  metadata?: Record<string, any>; // Optional contextual metadata passed to AI for more accurate generation
 }
 
 export interface ErrorConfig {
@@ -116,6 +117,7 @@ export interface AIProviderOptions {
   schema: any;
   instruction?: string;
   typeDescription?: any; // Type descriptions for AI (from schema)
+  metadata?: Record<string, any>; // Optional contextual metadata for AI generation
 }
 
 export type EndpointFunction<T> = (params?: Record<string, any>) => Promise<T>;

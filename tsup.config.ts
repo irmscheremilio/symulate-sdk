@@ -2,14 +2,18 @@ import { defineConfig } from 'tsup';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env.production for builds (contains production Supabase credentials)
-// .env.local can be used to override at runtime for local testing
+// Load production environment variables
 dotenv.config({ path: path.resolve(__dirname, '.env.production') });
 
-// Get environment variables with proper fallback
-const getPlatformUrl = () => process.env.SYMULATE_PLATFORM_URL || '';
-const getSupabaseUrl = () => process.env.SYMULATE_SUPABASE_URL || '';
-const getSupabaseAnonKey = () => process.env.SYMULATE_SUPABASE_ANON_KEY || '';
+// Production defaults (fallback if env vars not set)
+const PROD_PLATFORM_URL = 'https://platform.symulate.dev';
+const PROD_SUPABASE_URL = 'https://ptrjfelueuglvsdsqzok.supabase.co';
+const PROD_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB0cmpmZWx1ZXVnbHZzZHNxem9rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MjcyMDQsImV4cCI6MjA3NjMwMzIwNH0.pNF6fk1tC03xrsmp2r4e5uouvqOQgRFcj4BbsTI8TnU';
+
+// Get environment variables with proper fallback to production defaults
+const getPlatformUrl = () => process.env.SYMULATE_PLATFORM_URL || PROD_PLATFORM_URL;
+const getSupabaseUrl = () => process.env.SYMULATE_SUPABASE_URL || PROD_SUPABASE_URL;
+const getSupabaseAnonKey = () => process.env.SYMULATE_SUPABASE_ANON_KEY || PROD_SUPABASE_ANON_KEY;
 
 export default defineConfig({
   entry: ['src/index.ts', 'src/cli/index.ts'],

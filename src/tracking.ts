@@ -1,6 +1,8 @@
 import { getConfig } from "./config";
+import { PLATFORM_CONFIG } from "./platformConfig";
 
-const PLATFORM_API_URL = "https://ptrjfelueuglvsdsqzok.supabase.co/functions/v1/symulate";
+// Use configured Supabase URL (respects environment variables for local dev)
+const PLATFORM_API_URL = `${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`;
 
 /**
  * Track usage for analytics (non-blocking, won't affect generation)

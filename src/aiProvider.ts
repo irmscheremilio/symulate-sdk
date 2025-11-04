@@ -1,7 +1,9 @@
 import type { AIProviderOptions } from "./types";
 import { getConfig } from "./config";
+import { PLATFORM_CONFIG } from "./platformConfig";
 
-const PLATFORM_API_URL = "https://ptrjfelueuglvsdsqzok.supabase.co/functions/v1/symulate";
+// Use configured Supabase URL (respects environment variables for local dev)
+const PLATFORM_API_URL = `${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`;
 
 // Lazy-load auth module only in Node.js to avoid bundling Node.js modules for browser
 function getAuthSession(): any {
@@ -61,6 +63,7 @@ async function generateWithPlatform(options: AIProviderOptions, apiKey: string):
   console.log("Generating with Mockend Platform API...", {
     hasTypeDescription: !!options.typeDescription,
     instruction: options.instruction,
+    metadata: options.metadata,
     count,
     language: config.language
   });
@@ -76,6 +79,7 @@ async function generateWithPlatform(options: AIProviderOptions, apiKey: string):
       body: JSON.stringify({
         schema: options.typeDescription || options.schema,
         instruction: options.instruction,
+        metadata: options.metadata,
         count: count,
         language: config.language,
       }),
