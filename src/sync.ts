@@ -3,6 +3,7 @@ import { getCurrentContext, getAuthSession } from "./auth";
 import { PLATFORM_CONFIG } from "./platformConfig";
 import type { EndpointConfig } from "./types";
 import { IS_DEBUG } from "./env";
+import { exportCollectionsArray } from "./collectionRegistry";
 
 interface RemoteEndpoint {
   id: string;
@@ -71,8 +72,29 @@ export async function syncEndpoints(): Promise<void> {
   // 2. Collect local endpoints
   const localEndpoints = getRegisteredEndpoints();
 
-  if (localEndpoints.size === 0) {
-    console.log('[Symulate] ⚠ No endpoints found to sync.');
+  // 3. Collect collections and flatten to endpoints
+  const collections = exportCollectionsArray();
+  const collectionEndpoints = new Map<string, EndpointConfig<any>>();
+
+  collections.forEach(collection => {
+    collection.operations.forEach((operation: string) => {
+      const path = getOperationPath(collection.basePath, operation);
+      const method = getOperationMethod(operation);
+      const key = `${method} ${path}`;
+
+      collectionEndpoints.set(key, {
+        path,
+        method: method as any,
+        schema: collection.schema,
+      });
+    });
+  });
+
+  // Merge endpoints and collection endpoints
+  const allLocalEndpoints = new Map([...localEndpoints, ...collectionEndpoints]);
+
+  if (allLocalEndpoints.size === 0) {
+    console.log('[Symulate] ⚠ No endpoints or collections found to sync.');
     console.log('[Symulate] ');
     console.log('[Symulate] To fix this, create a symulate.config.js file in your project root:');
     console.log('[Symulate] ');
@@ -92,10 +114,16 @@ export async function syncEndpoints(): Promise<void> {
     return;
   }
 
-  console.log(`[Symulate] Found ${localEndpoints.size} local endpoint(s):`);
+  console.log(`[Symulate] Found ${localEndpoints.size} endpoint(s) and ${collections.length} collection(s):`);
   localEndpoints.forEach((config, key) => {
     console.log(`  • ${config.method} ${config.path}`);
   });
+  if (collections.length > 0) {
+    console.log(`\n[Symulate] Collections:`);
+    collections.forEach(collection => {
+      console.log(`  • ${collection.name} (${collection.operations.length} operations)`);
+    });
+  }
   console.log();
 
   // 2. Fetch remote endpoints
@@ -352,4 +380,27 @@ function serializeSchema(schema: any): any {
   // In the future, we might need more sophisticated serialization
   // to handle complex schema types
   return schema;
+}
+
+/**
+ * Get path for collection operation
+ */
+function getOperationPath(basePath: string, operation: string): string {
+  const needsId = ['get', 'update', 'replace', 'delete'];
+  return needsId.includes(operation) ? `${basePath}/:id` : basePath;
+}
+
+/**
+ * Get HTTP method for collection operation
+ */
+function getOperationMethod(operation: string): string {
+  const methodMap: Record<string, string> = {
+    list: 'GET',
+    get: 'GET',
+    create: 'POST',
+    update: 'PATCH',
+    replace: 'PUT',
+    delete: 'DELETE',
+  };
+  return methodMap[operation] || 'GET';
 }

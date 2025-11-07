@@ -16,15 +16,16 @@ program
 
 program
   .command("openapi")
-  .description("Generate OpenAPI specification from endpoint definitions")
+  .description("Generate OpenAPI specification from endpoint definitions and collections")
   .option("-o, --output <path>", "Output file path", "./openapi.json")
   .option("-t, --title <title>", "API title", "Mockend Generated API")
   .option("-v, --version <version>", "API version", "1.0.0")
   .option("-d, --description <description>", "API description")
   .option("-s, --server <url>", "Server URL (e.g., https://api.example.com)")
+  .option("--no-collections", "Exclude collections from the spec")
   .action(async (options) => {
     try {
-      console.log("Loading endpoint definitions...");
+      console.log("Loading endpoint definitions and collections...");
 
       // Load endpoint definitions from the project
       const { loadEndpoints } = await import("../loadEndpoints");
@@ -33,19 +34,24 @@ program
       const { getRegisteredEndpoints } = await import("../defineEndpoint");
       const endpoints = getRegisteredEndpoints();
 
-      if (endpoints.size === 0) {
-        console.warn("⚠ No endpoints found.");
+      // Load collections
+      const { exportCollectionsArray } = await import("../collectionRegistry");
+      const collections = options.collections !== false ? exportCollectionsArray() : [];
+
+      if (endpoints.size === 0 && collections.length === 0) {
+        console.warn("⚠ No endpoints or collections found.");
         console.warn("Create a symulate.config.js file to specify your endpoint entry files.");
         process.exit(1);
       }
 
-      console.log(`Found ${endpoints.size} endpoint(s)`);
+      console.log(`Found ${endpoints.size} endpoint(s) and ${collections.length} collection(s)`);
 
       const spec = generateOpenAPISpec(endpoints, {
         title: options.title,
         version: options.version,
         description: options.description,
         serverUrl: options.server,
+        collections,
       });
 
       const outputPath = path.resolve(process.cwd(), options.output);

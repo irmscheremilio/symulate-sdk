@@ -26,6 +26,12 @@ export function generateOpenAPISpec(
     version?: string;
     description?: string;
     serverUrl?: string;
+    collections?: Array<{
+      name: string;
+      basePath: string;
+      operations: string[];
+      schema: any;
+    }>;
   } = {}
 ): OpenAPISpec {
   const spec: OpenAPISpec = {
@@ -192,6 +198,33 @@ export function generateOpenAPISpec(
     spec.paths[apiPath][method.toLowerCase()] = operation;
   }
 
+  // Process collections
+  if (options.collections && options.collections.length > 0) {
+    for (const collection of options.collections) {
+      // Add schema to components
+      const schemaName = capitalize(collection.name);
+      if (spec.components && spec.components.schemas) {
+        spec.components.schemas[schemaName] = schemaToOpenAPI(collection.schema);
+      }
+
+      // Generate endpoints for each operation
+      for (const operation of collection.operations) {
+        const path = getCollectionOperationPath(collection.basePath, operation);
+        const method = getCollectionOperationMethod(operation).toLowerCase();
+
+        if (!spec.paths[path]) {
+          spec.paths[path] = {};
+        }
+
+        spec.paths[path][method] = createCollectionOperation(
+          operation,
+          collection.name,
+          schemaName
+        );
+      }
+    }
+  }
+
   return spec;
 }
 
@@ -349,6 +382,164 @@ function getDefaultErrorSchema(): any {
     },
     required: ["error"],
   };
+}
+
+/**
+ * Capitalize first letter of string
+ */
+function capitalize(str: string): string {
+  return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Get path for collection operation
+ */
+function getCollectionOperationPath(basePath: string, operation: string): string {
+  const needsId = ['get', 'update', 'replace', 'delete'];
+  return needsId.includes(operation) ? `${basePath}/{id}` : basePath;
+}
+
+/**
+ * Get HTTP method for collection operation
+ */
+function getCollectionOperationMethod(operation: string): string {
+  const methodMap: Record<string, string> = {
+    list: 'GET',
+    get: 'GET',
+    create: 'POST',
+    update: 'PATCH',
+    replace: 'PUT',
+    delete: 'DELETE',
+  };
+  return methodMap[operation] || 'GET';
+}
+
+/**
+ * Create OpenAPI operation for collection
+ */
+function createCollectionOperation(
+  operation: string,
+  collectionName: string,
+  schemaName: string
+): any {
+  const op: any = {
+    summary: `${capitalize(operation)} ${collectionName}`,
+    tags: [collectionName],
+    operationId: `${operation}${capitalize(collectionName)}`,
+    responses: {},
+  };
+
+  switch (operation) {
+    case 'list':
+      op.responses['200'] = {
+        description: `List of ${collectionName}`,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              properties: {
+                data: {
+                  type: 'array',
+                  items: { $ref: `#/components/schemas/${schemaName}` },
+                },
+                pagination: {
+                  type: 'object',
+                  properties: {
+                    page: { type: 'integer' },
+                    limit: { type: 'integer' },
+                    total: { type: 'integer' },
+                    totalPages: { type: 'integer' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+      op.parameters = [
+        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+        { name: 'sortBy', in: 'query', schema: { type: 'string' } },
+        { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+      ];
+      break;
+
+    case 'get':
+      op.parameters = [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+      ];
+      op.responses['200'] = {
+        description: `Single ${collectionName}`,
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schemaName}` },
+          },
+        },
+      };
+      op.responses['404'] = {
+        description: 'Not found',
+      };
+      break;
+
+    case 'create':
+      op.requestBody = {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schemaName}` },
+          },
+        },
+      };
+      op.responses['201'] = {
+        description: 'Created',
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schemaName}` },
+          },
+        },
+      };
+      break;
+
+    case 'update':
+    case 'replace':
+      op.parameters = [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+      ];
+      op.requestBody = {
+        required: true,
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schemaName}` },
+          },
+        },
+      };
+      op.responses['200'] = {
+        description: 'Updated',
+        content: {
+          'application/json': {
+            schema: { $ref: `#/components/schemas/${schemaName}` },
+          },
+        },
+      };
+      op.responses['404'] = {
+        description: 'Not found',
+      };
+      break;
+
+    case 'delete':
+      op.parameters = [
+        { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+      ];
+      op.responses['204'] = {
+        description: 'Deleted',
+      };
+      op.responses['404'] = {
+        description: 'Not found',
+      };
+      break;
+  }
+
+  return op;
 }
 
 export function saveOpenAPISpec(spec: OpenAPISpec, outputPath: string): void {

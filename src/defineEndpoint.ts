@@ -148,54 +148,95 @@ function interpolateVariables(template: string, params: Record<string, any>): st
   });
 }
 
-async function generateMockData<T>(
+/**
+ * Check if any error condition is met and throw appropriate error with generated response
+ */
+async function checkAndThrowError(
+  errors: any[] | undefined,
+  input: any,
+  path: string,
+  method: string,
+  config: EndpointConfig<any>
+): Promise<void> {
+  if (!errors || errors.length === 0) return;
+
+  for (const errorConfig of errors) {
+    // Check failNow first
+    if (errorConfig.failNow) {
+      await throwGeneratedError(errorConfig, input, path, method, config);
+    }
+
+    // Check failIf condition
+    if (errorConfig.failIf) {
+      const shouldFail = await errorConfig.failIf(input);
+      if (shouldFail) {
+        await throwGeneratedError(errorConfig, input, path, method, config);
+      }
+    }
+  }
+}
+
+/**
+ * Throw error with generated response
+ */
+async function throwGeneratedError(
+  errorConfig: any,
+  input: any,
+  path: string,
+  method: string,
+  config: EndpointConfig<any>
+): Promise<never> {
+  console.log(`[Symulate] ⚠️ Simulating error response (${errorConfig.code})`);
+
+  const globalConfig = getConfig();
+  let errorData: any;
+
+  // Generate error data if schema provided, otherwise use a default error
+  if (errorConfig.schema) {
+    const generateMode = globalConfig.generateMode || "auto";
+
+    if (generateMode === "faker" || generateMode === "auto") {
+      errorData = generateWithFaker(errorConfig.schema, 1);
+    } else {
+      try {
+        errorData = await generateWithAI({
+          schema: errorConfig.schema,
+          instruction: errorConfig.description || `Generate error response for ${errorConfig.code}`,
+          typeDescription: schemaToTypeDescription(errorConfig.schema),
+          metadata: config.mock?.metadata,
+        });
+      } catch (error) {
+        // Fallback to Faker if AI fails
+        errorData = generateWithFaker(errorConfig.schema, 1);
+      }
+    }
+  } else {
+    // Default error structure
+    errorData = {
+      error: {
+        message: errorConfig.description || `Error ${errorConfig.code}`,
+        code: errorConfig.code.toString(),
+      },
+    };
+  }
+
+  // Create an error object that includes the generated error data
+  const error = new Error(`[Symulate Mock] HTTP ${errorConfig.code}: ${errorConfig.description || 'Error'}`);
+  (error as any).status = errorConfig.code;
+  (error as any).data = errorData;
+  (error as any).response = errorData;
+  throw error;
+}
+
+export async function generateMockData<T>(
   config: EndpointConfig<T>,
   params?: Record<string, any>,
   runtimeMetadata?: Record<string, any>
 ): Promise<T> {
   const globalConfig = getConfig();
 
-  // Check if any error has failNow flag set to true
-  const failNowError = config.errors?.find(error => error.failNow === true);
-  if (failNowError) {
-    console.log(`[Symulate] ⚠️ Simulating error response (${failNowError.code}) due to failNow flag`);
-
-    // Generate error data if schema provided, otherwise use a default error
-    let errorData: any;
-    if (failNowError.schema) {
-      const generateMode = globalConfig.generateMode || "auto";
-
-      if (generateMode === "faker" || generateMode === "auto") {
-        errorData = generateWithFaker(failNowError.schema, 1);
-      } else {
-        try {
-          errorData = await generateWithAI({
-            schema: failNowError.schema,
-            instruction: failNowError.description || `Generate error response for ${failNowError.code}`,
-            typeDescription: schemaToTypeDescription(failNowError.schema),
-            metadata: config.mock?.metadata,
-          });
-        } catch (error) {
-          // Fallback to Faker if AI fails
-          errorData = generateWithFaker(failNowError.schema, 1);
-        }
-      }
-    } else {
-      // Default error structure
-      errorData = {
-        error: {
-          message: failNowError.description || `Error ${failNowError.code}`,
-          code: failNowError.code.toString(),
-        },
-      };
-    }
-
-    // Create an error object that includes the generated error data
-    const error = new Error(`[Symulate Mock] HTTP ${failNowError.code}: ${failNowError.description || 'Error'}`);
-    (error as any).status = failNowError.code;
-    (error as any).data = errorData;
-    throw error;
-  }
+  // Check for error conditions (failNow and failIf)
+  await checkAndThrowError(config.errors, params, config.path, config.method, config);
 
   // API key is required for all modes (even Faker mode for user tracking and quota management)
   if (!globalConfig.symulateApiKey) {

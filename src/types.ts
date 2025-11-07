@@ -14,8 +14,9 @@ export interface MockConfig {
 export interface ErrorConfig {
   code: number; // HTTP status code (e.g., 400, 404, 500)
   schema?: BaseSchema<any>; // Error response schema (optional - if not provided, generic error used)
-  description?: string; // Error description for OpenAPI spec
+  description?: string; // Error description for OpenAPI spec / instruction for generating error response
   failNow?: boolean; // If true, the request will immediately fail with this error
+  failIf?: (input: any) => boolean | Promise<boolean>; // Conditional error triggering - receives operation input, returns true if this specific error should occur
 }
 
 export type ParameterLocation = "path" | "query" | "header" | "body";
@@ -104,6 +105,17 @@ export interface MockendConfig {
   language?: string;
   // When true, cache is invalidated when endpoint config changes (method, mock.count, mock.instruction, etc.). Default: true
   regenerateOnConfigChange?: boolean;
+  // Configuration for stateful collections
+  collections?: {
+    persistence?: {
+      // Persistence mode: 'memory' (default), 'file', or 'supabase'
+      mode?: 'memory' | 'file' | 'supabase';
+      // File path for file persistence (default: '.symulate-data.json')
+      filePath?: string;
+      // Auto-save interval in milliseconds (default: 5000)
+      autoSaveInterval?: number;
+    };
+  };
 }
 
 export interface CachedTemplate {
