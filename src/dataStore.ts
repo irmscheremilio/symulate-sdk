@@ -306,6 +306,10 @@ export class DataStore<T extends Record<string, any>> {
 
   // Private helper methods
 
+  private isBrowser(): boolean {
+    return typeof globalThis !== 'undefined' && typeof (globalThis as any).window !== 'undefined';
+  }
+
   private generateId(): string {
     return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   }
@@ -362,12 +366,18 @@ export class DataStore<T extends Record<string, any>> {
     }
 
     try {
-      if (persistenceMode === 'file') {
-        const { loadFromFile } = await import('./persistence/filePersistence');
-        return await loadFromFile(this.collectionName);
+      if (persistenceMode === 'local') {
+        // Browser: use localStorage, Node.js: use filesystem
+        if (this.isBrowser()) {
+          const { loadFromLocalStorage } = await import('./persistence/localStoragePersistence');
+          return await loadFromLocalStorage(this.collectionName);
+        } else {
+          const { loadFromFile } = await import('./persistence/filePersistence');
+          return await loadFromFile(this.collectionName);
+        }
       }
 
-      if (persistenceMode === 'supabase') {
+      if (persistenceMode === 'cloud') {
         // Always use edge function for consistency across all environments
         const { loadFromEdgeFunction } = await import('./persistence/edgeFunctionPersistence');
         return await loadFromEdgeFunction(this.collectionName, this.schema, this.seedInstruction);
@@ -393,12 +403,18 @@ export class DataStore<T extends Record<string, any>> {
     const data = Array.from(this.data.values());
 
     try {
-      if (persistenceMode === 'file') {
-        const { saveToFile } = await import('./persistence/filePersistence');
-        await saveToFile(this.collectionName, data);
+      if (persistenceMode === 'local') {
+        // Browser: use localStorage, Node.js: use filesystem
+        if (this.isBrowser()) {
+          const { saveToLocalStorage } = await import('./persistence/localStoragePersistence');
+          await saveToLocalStorage(this.collectionName, data);
+        } else {
+          const { saveToFile } = await import('./persistence/filePersistence');
+          await saveToFile(this.collectionName, data);
+        }
       }
 
-      // For supabase mode, edge function handles persistence per-operation
+      // For cloud mode, edge function handles persistence per-operation
       // Bulk save is not needed as individual CRUD operations sync automatically
     } catch (error) {
       console.error(`Failed to persist ${this.collectionName}:`, error);
@@ -417,12 +433,12 @@ export class DataStore<T extends Record<string, any>> {
     }
 
     try {
-      if (persistenceMode === 'supabase') {
+      if (persistenceMode === 'cloud') {
         // Always use edge function for consistency
         const { createInEdgeFunction } = await import('./persistence/edgeFunctionPersistence');
         await createInEdgeFunction(this.collectionName, item);
-      } else if (persistenceMode === 'file') {
-        // For file mode, use bulk persist
+      } else if (persistenceMode === 'local') {
+        // For local mode, use bulk persist
         await this.persist();
       }
     } catch (error) {
@@ -442,12 +458,12 @@ export class DataStore<T extends Record<string, any>> {
     }
 
     try {
-      if (persistenceMode === 'supabase') {
+      if (persistenceMode === 'cloud') {
         // Always use edge function for consistency
         const { updateInEdgeFunction } = await import('./persistence/edgeFunctionPersistence');
         await updateInEdgeFunction(this.collectionName, id, updates);
-      } else if (persistenceMode === 'file') {
-        // For file mode, use bulk persist
+      } else if (persistenceMode === 'local') {
+        // For local mode, use bulk persist
         await this.persist();
       }
     } catch (error) {
@@ -467,12 +483,12 @@ export class DataStore<T extends Record<string, any>> {
     }
 
     try {
-      if (persistenceMode === 'supabase') {
+      if (persistenceMode === 'cloud') {
         // Always use edge function for consistency
         const { deleteFromEdgeFunction } = await import('./persistence/edgeFunctionPersistence');
         await deleteFromEdgeFunction(this.collectionName, id);
-      } else if (persistenceMode === 'file') {
-        // For file mode, use bulk persist
+      } else if (persistenceMode === 'local') {
+        // For local mode, use bulk persist
         await this.persist();
       }
     } catch (error) {

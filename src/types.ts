@@ -21,6 +21,13 @@ export interface ErrorConfig {
 
 export type ParameterLocation = "path" | "query" | "header" | "body";
 
+export type ParameterRole =
+  | 'pagination.page'
+  | 'pagination.limit'
+  | 'sort.field'
+  | 'sort.order'
+  | 'filter';
+
 export interface ParameterConfig {
   name: string;
   location: ParameterLocation;
@@ -28,6 +35,7 @@ export interface ParameterConfig {
   schema: BaseSchema<any>;
   description?: string;
   example?: any;
+  role?: ParameterRole; // Identifies the parameter's semantic purpose (e.g., 'pagination.page')
 }
 
 // Type helper to extract path parameters from a path string
@@ -105,16 +113,26 @@ export interface MockendConfig {
   language?: string;
   // When true, cache is invalidated when endpoint config changes (method, mock.count, mock.instruction, etc.). Default: true
   regenerateOnConfigChange?: boolean;
+  // Custom fetch implementation (e.g., for adding authentication headers, interceptors, etc.)
+  // Will be used globally for all backend requests unless overridden per-operation
+  fetch?: typeof fetch;
   // Configuration for stateful collections
   collections?: {
+    // Branch name for isolated data environments (e.g., "main", "customer-acme", "demo-v2")
+    // Allows creating separate data sets for different customers or environments without interference
+    // Default: "main"
+    branch?: string;
     persistence?: {
-      // Persistence mode: 'memory' (default), 'file', or 'supabase'
-      mode?: 'memory' | 'file' | 'supabase';
-      // File path for file persistence (default: '.symulate-data.json')
+      // Persistence mode: 'memory' (default), 'local' (localStorage/file), or 'cloud' (Supabase)
+      mode?: 'memory' | 'local' | 'cloud';
+      // File path for local file persistence in Node.js (default: '.symulate-data.json')
       filePath?: string;
       // Auto-save interval in milliseconds (default: 5000)
       autoSaveInterval?: number;
     };
+    // Disable automatic query parameters (pagination, sorting, filtering) for list operations
+    // Default: false (query params are enabled)
+    disableQueryParams?: boolean;
   };
 }
 

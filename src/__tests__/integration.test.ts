@@ -109,13 +109,13 @@ describe('Integration Tests', () => {
   });
 
   describe('Persistence Modes', () => {
-    it('should persist data to file and reload', async () => {
+    it('should persist data to local and reload', async () => {
       configureSymulate({
         environment: 'development',
         generateMode: 'faker',
         collections: {
           persistence: {
-            mode: 'file',
+            mode: 'local',
             filePath: testDataFile,
           }
         }

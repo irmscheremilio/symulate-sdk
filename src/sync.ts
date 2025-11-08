@@ -82,11 +82,20 @@ export async function syncEndpoints(): Promise<void> {
       const method = getOperationMethod(operation);
       const key = `${method} ${path}`;
 
+      // Get operation-specific config
+      const operationConfig = getOperationConfigForSync(collection.config, operation);
+
       collectionEndpoints.set(key, {
         path,
         method: method as any,
-        schema: collection.schema,
-      });
+        // Use operation-specific responseSchema if provided, otherwise fall back to collection schema
+        schema: operationConfig?.responseSchema || collection.schema,
+        params: operationConfig?.params,
+        errors: operationConfig?.errors,
+        mock: operationConfig?.mock,
+        mode: operationConfig?.mode,
+        // params already includes role-based parameter configuration
+      } as any);
     });
   });
 
@@ -184,7 +193,7 @@ export async function syncEndpoints(): Promise<void> {
   const toCreate: Array<{ config: EndpointConfig<any>, key: string }> = [];
   const toUpdate: Array<{ config: EndpointConfig<any>, key: string, remote: RemoteEndpoint }> = [];
 
-  localEndpoints.forEach((config, key) => {
+  allLocalEndpoints.forEach((config, key) => {
     const endpointKey = `${config.method}:${config.path}`;
     localKeys.add(endpointKey);
 
@@ -303,7 +312,7 @@ export async function syncEndpoints(): Promise<void> {
   }
 
   // 6. Prepare sync payload
-  const endpointsToSync = Array.from(localEndpoints.values())
+  const endpointsToSync = Array.from(allLocalEndpoints.values())
     .filter(config => {
       // Filter out endpoints that user chose to skip
       const endpointKey = `${config.method}:${config.path}`;
@@ -315,7 +324,7 @@ export async function syncEndpoints(): Promise<void> {
       path: config.path,
       schema: config.schema ? serializeSchema(config.schema) : undefined,
       mock: config.mock,
-      params: config.params,
+      params: config.params, // Includes role-based parameter configuration
       errors: config.errors,
       filename: (config as any).__filename || 'unknown',
     }));
@@ -403,4 +412,28 @@ function getOperationMethod(operation: string): string {
     delete: 'DELETE',
   };
   return methodMap[operation] || 'GET';
+}
+
+/**
+ * Get operation-specific config for syncing
+ */
+function getOperationConfigForSync(collectionConfig: any, operation: string): any {
+  if (!collectionConfig.operations) {
+    return null;
+  }
+
+  const opConfig = collectionConfig.operations[operation];
+
+  // If operation is disabled (false) or not configured, return null
+  if (opConfig === false || opConfig === undefined) {
+    return null;
+  }
+
+  // If operation is just enabled (true), return empty config
+  if (opConfig === true) {
+    return {};
+  }
+
+  // Return the full operation config
+  return opConfig;
 }

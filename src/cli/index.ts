@@ -479,6 +479,105 @@ projectsCommand
     }
   });
 
+// Collections command group
+const collectionsCommand = program
+  .command("collections")
+  .description("Manage stateful collections");
+
+collectionsCommand
+  .command("list")
+  .description("List all collections for current project")
+  .option("-b, --branch <name>", "Filter by branch name")
+  .action(async (options) => {
+    try {
+      const { getCurrentContext, getAuthSession } = await import("../auth");
+      const { orgId, projectId } = getCurrentContext();
+      const session = getAuthSession();
+
+      if (!session || !session.accessToken || !orgId || !projectId) {
+        console.error(
+          "[Symulate] Missing context. Please login and select an organization/project first."
+        );
+        console.log("[Symulate] Run 'npx symulate login' to get started");
+        process.exit(1);
+      }
+
+      const { listCollections } = await import("./collections");
+      await listCollections({
+        accessToken: session.accessToken,
+        projectId,
+        branch: options.branch
+      });
+    } catch (error) {
+      console.error("Error listing collections:", error);
+      process.exit(1);
+    }
+  });
+
+collectionsCommand
+  .command("delete")
+  .description("Delete collection data")
+  .option("-n, --name <collection>", "Collection name to delete")
+  .option("-b, --branch <name>", "Delete only from specific branch")
+  .option("--all", "Delete all collections (with confirmation)")
+  .action(async (options) => {
+    try {
+      const { getCurrentContext, getAuthSession } = await import("../auth");
+      const { orgId, projectId } = getCurrentContext();
+      const session = getAuthSession();
+
+      if (!session || !session.accessToken || !orgId || !projectId) {
+        console.error(
+          "[Symulate] Missing context. Please login and select an organization/project first."
+        );
+        console.log("[Symulate] Run 'npx symulate login' to get started");
+        process.exit(1);
+      }
+
+      const { deleteCollections } = await import("./collections");
+      await deleteCollections({
+        accessToken: session.accessToken,
+        projectId,
+        name: options.name,
+        branch: options.branch,
+        all: options.all,
+      });
+    } catch (error) {
+      console.error("Error deleting collections:", error);
+      process.exit(1);
+    }
+  });
+
+collectionsCommand
+  .command("pregenerate")
+  .description("Pre-generate all defined collections")
+  .option("-b, --branch <name>", "Target branch (default: main)")
+  .action(async (options) => {
+    try {
+      const { getCurrentContext, getAuthSession } = await import("../auth");
+      const { orgId, projectId } = getCurrentContext();
+      const session = getAuthSession();
+
+      if (!session || !session.accessToken || !orgId || !projectId) {
+        console.error(
+          "[Symulate] Missing context. Please login and select an organization/project first."
+        );
+        console.log("[Symulate] Run 'npx symulate login' to get started");
+        process.exit(1);
+      }
+
+      const { pregenerateCollections } = await import("./collections");
+      await pregenerateCollections({
+        accessToken: session.accessToken,
+        projectId,
+        branch: options.branch,
+      });
+    } catch (error) {
+      console.error("Error pre-generating collections:", error);
+      process.exit(1);
+    }
+  });
+
 // Sync command
 program
   .command("sync")

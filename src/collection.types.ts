@@ -1,5 +1,5 @@
 import { BaseSchema, Infer } from './schema';
-import { ErrorConfig } from './types';
+import { ErrorConfig, ParameterConfig, MockConfig } from './types';
 
 /**
  * HTTP methods supported for CRUD operations
@@ -13,6 +13,7 @@ export type OperationName = 'list' | 'get' | 'create' | 'update' | 'replace' | '
 
 /**
  * Configuration for a single CRUD operation
+ * Has same capabilities as defineEndpoint for consistency
  */
 export interface OperationConfig {
   /**
@@ -35,6 +36,33 @@ export interface OperationConfig {
   method?: CRUDMethod;
 
   /**
+   * Response schema for this operation
+   * Defines the structure of data returned by this specific operation
+   * Different from the collection's entity schema
+   *
+   * Examples:
+   * - list: Response with { data: T[], pagination: {...} }
+   * - get: Single entity T
+   * - create/update/replace: Created/updated entity T
+   * - delete: void or { success: boolean }
+   *
+   * Note: Should only use fields from the collection's entity schema
+   */
+  responseSchema?: BaseSchema<any>;
+
+  /**
+   * Parameter definitions (path, query, body, headers)
+   * Same as defineEndpoint params
+   *
+   * @example
+   * params: [
+   *   { name: 'id', location: 'path', schema: m.string(), required: true },
+   *   { name: 'page', location: 'query', schema: m.number() }
+   * ]
+   */
+  params?: ParameterConfig[];
+
+  /**
    * Error configurations for this operation
    * Each error can have a failIf condition to trigger it conditionally
    * Same as defineEndpoint errors config
@@ -42,12 +70,24 @@ export interface OperationConfig {
   errors?: ErrorConfig[];
 
   /**
-   * Custom mock configuration for seed data generation
+   * Custom mock configuration for this operation
+   * Same as defineEndpoint mock config
    */
-  mock?: {
-    instruction?: string;
-    count?: number;
-  };
+  mock?: MockConfig;
+
+  /**
+   * Override environment mode for this operation
+   * @default Uses global config
+   */
+  mode?: 'mock' | 'production';
+
+  /**
+   * Disable automatic query parameters (pagination, sorting, filtering) for this operation
+   * Overrides global disableQueryParams setting
+   * @default false (query params are enabled)
+   */
+  disableQueryParams?: boolean;
+
 }
 
 /**
@@ -103,7 +143,9 @@ export interface CollectionConfig<T = any> {
   name: string;
 
   /**
-   * Schema definition for the collection
+   * Schema definition for the collection.
+   * This is what will be generated and stored for this collection.
+   * Using the oprations, you will be able to perform some actions on the stored collection.
    * Uses Symulate schema builder (m.object(...))
    */
   schema: BaseSchema<T>;
@@ -187,6 +229,23 @@ export interface QueryOptions {
    * Filter criteria (future enhancement)
    */
   filter?: Record<string, any>;
+
+  /**
+   * Custom fetch implementation for this specific operation
+   * Overrides global fetch configuration
+   */
+  fetch?: typeof fetch;
+}
+
+/**
+ * Options for single-item operations (get, update, replace, delete)
+ */
+export interface OperationOptions {
+  /**
+   * Custom fetch implementation for this specific operation
+   * Overrides global fetch configuration
+   */
+  fetch?: typeof fetch;
 }
 
 /**
@@ -244,31 +303,31 @@ export interface Collection<T = any> {
    * Get single item by ID
    * GET /{basePath}/:id
    */
-  get(id: string): Promise<T>;
+  get(id: string, options?: OperationOptions): Promise<T>;
 
   /**
    * Create new item
    * POST /{basePath}
    */
-  create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T>;
+  create(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>, options?: OperationOptions): Promise<T>;
 
   /**
    * Partial update (PATCH)
    * PATCH /{basePath}/:id
    */
-  update(id: string, data: Partial<T>): Promise<T>;
+  update(id: string, data: Partial<T>, options?: OperationOptions): Promise<T>;
 
   /**
    * Full replacement (PUT)
    * PUT /{basePath}/:id
    */
-  replace(id: string, data: Omit<T, 'id'>): Promise<T>;
+  replace(id: string, data: Omit<T, 'id'>, options?: OperationOptions): Promise<T>;
 
   /**
    * Delete item
    * DELETE /{basePath}/:id
    */
-  delete(id: string): Promise<void>;
+  delete(id: string, options?: OperationOptions): Promise<void>;
 
   // Dynamic relation methods added at runtime
   // e.g., getPosts(userId: string): Promise<Post[]>
@@ -294,13 +353,13 @@ export interface PersistenceConfig {
   /**
    * Persistence mode
    * - 'memory': In-memory only (default)
-   * - 'file': Save to .symulate-data.json
-   * - 'supabase': Cloud sync via Supabase
+   * - 'local': localStorage (browser) or file (Node.js)
+   * - 'cloud': Cloud sync via Supabase
    */
-  mode: 'memory' | 'file' | 'supabase';
+  mode: 'memory' | 'local' | 'cloud';
 
   /**
-   * File path for file persistence
+   * File path for local file persistence in Node.js
    * @default '.symulate-data.json'
    */
   filePath?: string;

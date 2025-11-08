@@ -31,6 +31,7 @@ export function generateOpenAPISpec(
       basePath: string;
       operations: string[];
       schema: any;
+      config?: any; // Full collection config including queryParams
     }>;
   } = {}
 ): OpenAPISpec {
@@ -216,10 +217,14 @@ export function generateOpenAPISpec(
           spec.paths[path] = {};
         }
 
+        // Get operation-specific config for query params
+        const operationConfig = getOperationConfig(collection.config, operation);
+
         spec.paths[path][method] = createCollectionOperation(
           operation,
           collection.name,
-          schemaName
+          schemaName,
+          operationConfig
         );
       }
     }
@@ -415,12 +420,37 @@ function getCollectionOperationMethod(operation: string): string {
 }
 
 /**
+ * Get operation-specific config from collection config
+ */
+function getOperationConfig(collectionConfig: any, operation: string): any {
+  if (!collectionConfig?.operations) {
+    return null;
+  }
+
+  const opConfig = collectionConfig.operations[operation];
+
+  // If operation is disabled (false) or not configured, return null
+  if (opConfig === false || opConfig === undefined) {
+    return null;
+  }
+
+  // If operation is just enabled (true), return empty config
+  if (opConfig === true) {
+    return {};
+  }
+
+  // Return the full operation config
+  return opConfig;
+}
+
+/**
  * Create OpenAPI operation for collection
  */
 function createCollectionOperation(
   operation: string,
   collectionName: string,
-  schemaName: string
+  schemaName: string,
+  operationConfig?: any
 ): any {
   const op: any = {
     summary: `${capitalize(operation)} ${collectionName}`,
@@ -456,12 +486,101 @@ function createCollectionOperation(
           },
         },
       };
-      op.parameters = [
-        { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
-        { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-        { name: 'sortBy', in: 'query', schema: { type: 'string' } },
-        { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
-      ];
+
+      // Build parameters from role-based params configuration
+      const parameters: any[] = [];
+      const bodyProperties: Record<string, any> = {};
+      const bodyRequired: string[] = [];
+
+      // Check if query params are disabled
+      const disableQueryParams = operationConfig?.disableQueryParams === true;
+
+      if (!disableQueryParams) {
+        const params = operationConfig?.params || [];
+
+        // Helper to find param by role
+        const findParamByRole = (role: string) => {
+          return params.find((p: any) => p.role === role);
+        };
+
+        // Helper to add parameter based on role or defaults
+        const addQueryParam = (
+          role: string,
+          defaultName: string,
+          defaultType: string,
+          defaultEnum?: string[]
+        ) => {
+          const param = findParamByRole(role);
+          const name = param?.name || defaultName;
+          const location = param?.location || 'query';
+          const type = defaultType;
+
+          const schema: any = param?.schema ? schemaToOpenAPI(param.schema) : { type };
+          if (defaultEnum && !param) {
+            schema.enum = defaultEnum;
+          }
+          if (defaultName === 'page') {
+            schema.default = 1;
+          } else if (defaultName === 'limit') {
+            schema.default = 20;
+          }
+
+          if (location === 'query') {
+            parameters.push({ name, in: 'query', schema });
+          } else if (location === 'header') {
+            parameters.push({ name, in: 'header', schema });
+          } else if (location === 'body') {
+            bodyProperties[name] = schema;
+            bodyRequired.push(name);
+          }
+        };
+
+        // Add pagination parameters
+        addQueryParam('pagination.page', 'page', 'integer');
+        addQueryParam('pagination.limit', 'limit', 'integer');
+
+        // Add sorting parameters
+        addQueryParam('sort.field', 'sortBy', 'string');
+        addQueryParam('sort.order', 'sortOrder', 'string', ['asc', 'desc']);
+
+        // Add filter parameter
+        const filterParam = findParamByRole('filter');
+        if (filterParam || params.length === 0) {
+          const name = filterParam?.name || 'filter';
+          const location = filterParam?.location || 'query';
+          const schema: any = filterParam?.schema ? schemaToOpenAPI(filterParam.schema) : { type: 'object' };
+
+          if (location === 'query') {
+            parameters.push({ name, in: 'query', schema });
+          } else if (location === 'header') {
+            parameters.push({ name, in: 'header', schema });
+          } else if (location === 'body') {
+            bodyProperties[name] = schema;
+            bodyRequired.push(name);
+          }
+        }
+      }
+
+      // Set parameters if any
+      if (parameters.length > 0) {
+        op.parameters = parameters;
+      }
+
+      // Add request body if there are body parameters
+      if (Object.keys(bodyProperties).length > 0) {
+        op.requestBody = {
+          required: bodyRequired.length > 0,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: bodyProperties,
+                required: bodyRequired.length > 0 ? bodyRequired : undefined,
+              },
+            },
+          },
+        };
+      }
       break;
 
     case 'get':

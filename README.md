@@ -480,6 +480,493 @@ mock: {
 // Instruction guides overall theme, metadata provides specific constraints
 ```
 
+## Stateful Collections (CRUD)
+
+**NEW:** Define collections with full CRUD operations and persistent state management. Unlike basic endpoints that simulate responses, collections maintain state across requests with automatic pagination, filtering, and server-side persistence.
+
+### Overview
+
+Stateful Collections provide a complete backend-like experience during frontend development:
+
+- ✅ **Full CRUD Operations**: Create, Read, Update, Delete with type safety
+- ✅ **Server-Side Pagination**: True paginated responses (not client-side filtering)
+- ✅ **Persistent State**: Data persists across requests and page reloads
+- ✅ **Branch Isolation**: Multi-tenant data isolation for customer demos
+- ✅ **AI-Generated Seeds**: Automatically generate realistic seed data
+- ✅ **Read-After-Write Consistency**: Created/updated items are immediately available
+
+### Quick Start
+
+```typescript
+import { defineCollection, m, type Infer } from '@symulate/sdk';
+
+// Define schema
+const ProductSchema = m.object({
+  id: m.uuid(),
+  name: m.commerce.productName(),
+  price: m.commerce.price(),
+  inStock: m.boolean(),
+  category: m.commerce.department(),
+  createdAt: m.date(),
+});
+
+export type Product = Infer<typeof ProductSchema>;
+
+// Define collection
+export const products = defineCollection<Product>({
+  name: 'products',
+  basePath: '/api/products',
+  schema: ProductSchema,
+  seedCount: 20,  // Initial items to generate
+  seedInstruction: 'Generate realistic e-commerce products',
+});
+```
+
+### CRUD Operations
+
+#### List with Pagination
+
+```typescript
+// Basic list
+const response = await products.list();
+console.log(response.data);        // Product[]
+console.log(response.pagination);  // { page: 1, limit: 20, total: 20, totalPages: 1 }
+
+// With pagination
+const page2 = await products.list({ page: 2, limit: 10 });
+
+// With sorting
+const sorted = await products.list({
+  sortBy: 'price',
+  sortOrder: 'desc'
+});
+
+// With filtering
+const filtered = await products.list({
+  filter: { category: 'Electronics' }
+});
+```
+
+#### Get Single Item
+
+```typescript
+const product = await products.get('product-id-123');
+console.log(product.name);  // Fully typed!
+```
+
+#### Create Item
+
+```typescript
+const newProduct = await products.create({
+  name: 'Wireless Mouse',
+  price: 29.99,
+  inStock: true,
+  category: 'Electronics'
+  // id, createdAt auto-generated
+});
+
+console.log(newProduct.id);  // Auto-generated UUID
+```
+
+#### Update Item (Partial)
+
+```typescript
+// Only update specified fields
+const updated = await products.update('product-id-123', {
+  price: 24.99,  // Only price changes
+  inStock: false
+});
+
+// Other fields remain unchanged
+console.log(updated.name);  // Original name preserved
+```
+
+#### Delete Item
+
+```typescript
+await products.delete('product-id-123');
+
+// Item is permanently removed
+const response = await products.list();
+// product-id-123 no longer in the list
+```
+
+### Collection Configuration
+
+```typescript
+defineCollection<T>({
+  name: string,              // Collection identifier (required)
+  basePath: string,          // Base API path (required)
+  schema: BaseSchema<T>,     // Data schema (required)
+  seedCount?: number,        // Initial items to generate (default: 20)
+  seedInstruction?: string,  // AI instruction for seed data
+  operations?: {             // Enable/disable operations
+    list?: boolean,          // Default: true
+    get?: boolean,           // Default: true
+    create?: boolean,        // Default: true
+    update?: boolean,        // Default: true
+    delete?: boolean,        // Default: true
+  },
+})
+```
+
+### Branch Isolation
+
+Collections support branch isolation for multi-tenant demos and testing environments:
+
+```typescript
+// Configure branch in global config
+configureSymulate({
+  collections: {
+    branch: 'customer-acme'  // Isolate data per customer/environment
+  }
+});
+
+// All collection operations now use 'customer-acme' branch
+await products.list();   // Only returns products from 'customer-acme' branch
+await products.create(); // Creates product in 'customer-acme' branch
+```
+
+**Use Cases:**
+- **Customer Demos**: Separate data for each customer demo
+  ```typescript
+  // Demo for customer A
+  configureSymulate({ collections: { branch: 'demo-customer-a' } });
+
+  // Demo for customer B
+  configureSymulate({ collections: { branch: 'demo-customer-b' } });
+  ```
+
+- **Environment Separation**: Isolate dev/staging/production data
+  ```typescript
+  const branch = process.env.NODE_ENV === 'production' ? 'main' : 'dev';
+  configureSymulate({ collections: { branch } });
+  ```
+
+### Persistence Modes
+
+Collections support three persistence modes for different use cases:
+
+```typescript
+configureSymulate({
+  collections: {
+    persistence: {
+      mode: 'local'  // 'memory', 'local', or 'cloud'
+    }
+  }
+});
+```
+
+**Persistence Modes:**
+
+- **`memory`** (default): In-memory only
+  - ✅ Fastest performance
+  - ✅ Perfect for quick prototyping
+  - ❌ Data lost on page refresh
+  - **Use for**: Quick tests, demos where clean state is desired
+
+- **`local`**: localStorage (browser) or filesystem (Node.js)
+  - ✅ Data survives page refreshes
+  - ✅ No backend required
+  - ✅ Works in both browser and Node.js
+  - ⚠️ ~5-10MB browser storage limit
+  - **Browser**: Uses `localStorage` API
+  - **Node.js**: Saves to `.symulate-data.json` file
+  - **Use for**: Local development, offline testing, prototypes
+
+- **`cloud`**: Server-side persistence via Supabase
+  - ✅ True server-side state
+  - ✅ Multi-tenant with branch isolation
+  - ✅ Shared across devices/sessions
+  - ✅ Server-side pagination
+  - **Requires**: Symulate API key and project ID
+  - **Use for**: Realistic backend simulation, customer demos, team collaboration
+
+**Example Configuration:**
+
+```typescript
+// Local development with browser persistence
+configureSymulate({
+  collections: {
+    persistence: {
+      mode: 'local'  // Survives page refresh
+    }
+  }
+});
+
+// Production-like with cloud persistence
+configureSymulate({
+  symulateApiKey: 'sym_live_xxx',
+  projectId: 'proj_xxx',
+  collections: {
+    persistence: {
+      mode: 'cloud'  // Server-side with branch isolation
+    },
+    branch: 'customer-acme'
+  }
+});
+```
+
+### CLI Management
+
+Manage collections via CLI commands:
+
+```bash
+# List all collections
+npx symulate collections list
+npx symulate collections list -b customer-acme
+
+# Delete collections
+npx symulate collections delete -n products
+npx symulate collections delete -n products -b dev
+npx symulate collections delete --all  # With confirmation
+
+# Pre-generate all collections
+npx symulate collections pregenerate
+npx symulate collections pregenerate -b demo
+```
+
+### Query Parameter Customization
+
+Customize query parameter names and routing for pagination, sorting, and filtering to match your backend API conventions.
+
+#### Default Behavior
+
+By default, collections automatically add these query parameters to list operations:
+- **Pagination**: `page`, `limit`
+- **Sorting**: `sortBy`, `sortOrder`
+- **Filtering**: `filter`
+
+```typescript
+// These work out of the box
+await products.list({ page: 1, limit: 20, sortBy: 'price', sortOrder: 'desc' });
+// GET /api/products?page=1&limit=20&sortBy=price&sortOrder=desc
+```
+
+#### Role-Based Parameter Customization
+
+Use the `params` array with semantic roles to customize parameter names and routing:
+
+```typescript
+defineCollection({
+  name: 'products',
+  basePath: '/api/products',
+  schema: ProductSchema,
+  operations: {
+    list: {
+      params: [
+        // Custom pagination parameter names
+        { name: 'pageNumber', location: 'query', role: 'pagination.page', schema: m.number() },
+        { name: 'pageSize', location: 'query', role: 'pagination.limit', schema: m.number() },
+
+        // Custom sorting parameter names
+        { name: 'orderBy', location: 'query', role: 'sort.field', schema: m.string() },
+        { name: 'direction', location: 'query', role: 'sort.order', schema: m.string() },
+
+        // Custom filter parameter name
+        { name: 'search', location: 'query', role: 'filter', schema: m.object({ category: m.string() }) },
+      ]
+    }
+  }
+});
+
+// Internal API stays the same
+await products.list({ page: 1, limit: 20, sortBy: 'price', sortOrder: 'desc' });
+
+// But generates URL with custom parameter names:
+// GET /api/products?pageNumber=1&pageSize=20&orderBy=price&direction=desc
+```
+
+#### Available Parameter Roles
+
+| Role | Purpose | Default Name |
+|------|---------|--------------|
+| `pagination.page` | Current page number | `page` |
+| `pagination.limit` | Items per page | `limit` |
+| `sort.field` | Field to sort by | `sortBy` |
+| `sort.order` | Sort direction (asc/desc) | `sortOrder` |
+| `filter` | Filter criteria | `filter` |
+
+#### Parameter Locations
+
+Control WHERE parameters are sent using the `location` property:
+
+```typescript
+defineCollection({
+  name: 'products',
+  operations: {
+    list: {
+      params: [
+        // Send in query string (default)
+        { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+
+        // Send in request body (switches to POST)
+        { name: 'filter', location: 'body', role: 'filter', schema: m.object({ category: m.string() }) },
+
+        // Send as HTTP header
+        { name: 'X-Sort-By', location: 'header', role: 'sort.field', schema: m.string() },
+      ]
+    }
+  }
+});
+
+// Usage
+await products.list({ page: 1, filter: { category: 'Electronics' }, sortBy: 'price' });
+// POST /api/products?page=1
+// Headers: X-Sort-By: price
+// Body: { "filter": { "category": "Electronics" } }
+```
+
+**Available locations:**
+- **`query`** (default) - URL query string parameter
+- **`body`** - Request body (automatically switches to POST)
+- **`header`** - HTTP header
+
+**Important Notes:**
+- When any parameter uses `location: 'body'`, the request method automatically changes from GET to POST
+- You can mix different locations in the same request (query + body + headers)
+- Header names can be custom (e.g., `X-Page`, `X-Sort-By`)
+
+#### Disabling Query Parameters
+
+You can disable automatic query parameters globally or per-operation:
+
+**Global disable:**
+```typescript
+configureSymulate({
+  collections: {
+    disableQueryParams: true  // Disables for ALL collections
+  }
+});
+
+// No query parameters added
+await products.list({ page: 1, limit: 20 });
+// GET /api/products (no query params)
+```
+
+**Per-operation disable:**
+```typescript
+defineCollection({
+  name: 'products',
+  operations: {
+    list: {
+      disableQueryParams: true  // Disables only for this operation
+    }
+  }
+});
+```
+
+#### Common API Conventions
+
+**Laravel/Spring Boot style:**
+```typescript
+params: [
+  { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+  { name: 'per_page', location: 'query', role: 'pagination.limit', schema: m.number() },
+  { name: 'sort', location: 'query', role: 'sort.field', schema: m.string() },
+  { name: 'order', location: 'query', role: 'sort.order', schema: m.string() },
+]
+```
+
+**ASP.NET Core style:**
+```typescript
+params: [
+  { name: 'pageNumber', location: 'query', role: 'pagination.page', schema: m.number() },
+  { name: 'pageSize', location: 'query', role: 'pagination.limit', schema: m.number() },
+  { name: 'orderBy', location: 'query', role: 'sort.field', schema: m.string() },
+  { name: 'sortOrder', location: 'query', role: 'sort.order', schema: m.string() },
+]
+```
+
+**Django style:**
+```typescript
+params: [
+  { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+  { name: 'page_size', location: 'query', role: 'pagination.limit', schema: m.number() },
+  { name: 'ordering', location: 'query', role: 'sort.field', schema: m.string() },
+  { name: 'search', location: 'query', role: 'filter', schema: m.string() },
+]
+```
+
+### Server-Side vs Client-Side
+
+**Traditional Endpoints** (defineEndpoint):
+- Simulated responses
+- No state persistence
+- Client-side pagination (all data loaded)
+- Static mock data
+
+**Stateful Collections** (defineCollection):
+- Full CRUD operations
+- Server-side persistence
+- True pagination (only requested page returned)
+- Dynamic state changes
+
+### Complete Example
+
+```typescript
+import { defineCollection, m, type Infer, configureSymulate } from '@symulate/sdk';
+
+// Configure with branch support
+configureSymulate({
+  symulateApiKey: 'sym_live_xxx',
+  projectId: 'proj_xxx',
+  environment: 'development',
+  collections: {
+    branch: 'main'  // or 'demo-customer-a', 'dev', etc.
+  }
+});
+
+// Define user collection
+const UserSchema = m.object({
+  id: m.uuid(),
+  name: m.person.fullName(),
+  email: m.email(),
+  role: m.string("Role: admin, user, or guest"),
+  createdAt: m.date(),
+  updatedAt: m.date(),
+});
+
+export type User = Infer<typeof UserSchema>;
+
+export const users = defineCollection<User>({
+  name: 'users',
+  basePath: '/api/users',
+  schema: UserSchema,
+  seedCount: 50,
+  seedInstruction: 'Generate diverse tech company employees',
+});
+
+// Usage in your app
+async function userManagement() {
+  // List users with pagination
+  const page1 = await users.list({ page: 1, limit: 10 });
+  console.log(`Total users: ${page1.pagination.total}`);
+
+  // Create new user
+  const newUser = await users.create({
+    name: 'Jane Doe',
+    email: 'jane@example.com',
+    role: 'admin'
+  });
+
+  // Get user by ID
+  const user = await users.get(newUser.id);
+
+  // Update user
+  const updated = await users.update(user.id, {
+    role: 'user'  // Demote from admin to user
+  });
+
+  // Delete user
+  await users.delete(user.id);
+
+  // Verify deletion
+  const page2 = await users.list();
+  console.log(`Remaining users: ${page2.pagination.total}`);
+}
+```
+
 ### Runtime Metadata
 
 You can pass metadata dynamically at runtime when calling an endpoint, allowing context-specific data generation based on user input, component state, or application context.
@@ -1317,6 +1804,64 @@ npx Symulate cache --search products --full
   "email": "john@example.com",
   "createdAt": "2025-12-20T15:30:00.000Z"
 }
+```
+
+### Collection Management
+
+Manage stateful collections with CLI commands:
+
+```bash
+# List all collections
+npx symulate collections list
+
+# List collections for specific branch
+npx symulate collections list -b customer-acme
+
+# Delete specific collection
+npx symulate collections delete -n products
+
+# Delete collection from specific branch
+npx symulate collections delete -n products -b dev
+
+# Delete all collections (requires confirmation)
+npx symulate collections delete --all
+
+# Pre-generate all defined collections
+npx symulate collections pregenerate
+
+# Pre-generate for specific branch
+npx symulate collections pregenerate -b demo
+```
+
+**Options:**
+
+**`collections list`**
+- `-b, --branch <name>` - Filter by branch name
+
+**`collections delete`**
+- `-n, --name <collection>` - Collection name to delete
+- `-b, --branch <name>` - Delete only from specific branch
+- `--all` - Delete all collections (with confirmation prompt)
+
+**`collections pregenerate`**
+- `-b, --branch <name>` - Target branch (default: main)
+
+**Example output (list):**
+```
+   Found 2 collection(s):
+
+   • products
+     └─ main (20 items)
+     └─ customer-acme (15 items)
+
+   • users
+     └─ main (10 items)
+```
+
+**Example output (delete --all):**
+```
+⚠️  WARNING: You are about to delete ALL collections across ALL branches
+   Type "DELETE ALL" to confirm:
 ```
 
 ### Clear Cache

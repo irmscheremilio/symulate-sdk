@@ -85,6 +85,7 @@ export function exportCollectionsArray(): Array<{
   basePath: string;
   operations: string[];
   schema: any;
+  config: any; // Full collection config for accessing operation-specific settings
 }> {
   const registry = getRegistry();
   const collections: Array<any> = [];
@@ -97,6 +98,7 @@ export function exportCollectionsArray(): Array<{
       basePath: metadata.instance.basePath,
       operations,
       schema: metadata.config.schema,
+      config: metadata.config, // Include full config
     });
   });
 

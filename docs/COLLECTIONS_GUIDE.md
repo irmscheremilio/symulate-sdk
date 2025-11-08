@@ -177,6 +177,167 @@ export const products = defineCollection<Product>({
 });
 ```
 
+### Query Parameter Customization
+
+Customize query parameter names and routing for pagination, sorting, and filtering to match your backend API conventions.
+
+#### Default Behavior
+
+By default, collections use these parameter names for list operations:
+- **Pagination**: `page`, `limit`
+- **Sorting**: `sortBy`, `sortOrder`
+- **Filtering**: `filter`
+
+```typescript
+await products.list({ page: 1, limit: 20, sortBy: 'price', sortOrder: 'desc' });
+// GET /api/products?page=1&limit=20&sortBy=price&sortOrder=desc
+```
+
+#### Role-Based Parameter Customization
+
+Use the `params` array with semantic roles to customize parameter names and locations:
+
+```typescript
+export const products = defineCollection<Product>({
+  name: 'products',
+  basePath: '/api/products',
+  schema: ProductSchema,
+  operations: {
+    list: {
+      params: [
+        // Custom pagination parameter names
+        { name: 'pageNumber', location: 'query', role: 'pagination.page', schema: m.number() },
+        { name: 'pageSize', location: 'query', role: 'pagination.limit', schema: m.number() },
+
+        // Custom sorting parameter names
+        { name: 'orderBy', location: 'query', role: 'sort.field', schema: m.string() },
+        { name: 'direction', location: 'query', role: 'sort.order', schema: m.string() },
+
+        // Custom filter parameter name
+        { name: 'q', location: 'query', role: 'filter', schema: m.object({ category: m.string() }) },
+      ]
+    }
+  }
+});
+
+// Internal API stays the same
+await products.list({ page: 1, limit: 20, sortBy: 'price', sortOrder: 'desc' });
+
+// But generates URL with custom parameter names:
+// GET /api/products?pageNumber=1&pageSize=20&orderBy=price&direction=desc
+```
+
+**Available parameter roles:**
+
+| Role | Purpose | Default Name |
+|------|---------|--------------|
+| `pagination.page` | Current page number | `page` |
+| `pagination.limit` | Items per page | `limit` |
+| `sort.field` | Field to sort by | `sortBy` |
+| `sort.order` | Sort direction (asc/desc) | `sortOrder` |
+| `filter` | Filter criteria | `filter` |
+
+#### Parameter Locations
+
+Control WHERE parameters are sent using the `location` property:
+
+```typescript
+export const products = defineCollection<Product>({
+  name: 'products',
+  operations: {
+    list: {
+      params: [
+        // Send in query string (default)
+        { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+
+        // Send in request body (switches to POST)
+        { name: 'filter', location: 'body', role: 'filter', schema: m.object({ category: m.string() }) },
+
+        // Send as HTTP header
+        { name: 'X-Sort-By', location: 'header', role: 'sort.field', schema: m.string() },
+      ]
+    }
+  }
+});
+
+// Usage
+await products.list({ page: 1, filter: { category: 'Electronics' }, sortBy: 'price' });
+// POST /api/products?page=1
+// Headers: X-Sort-By: price
+// Body: { "filter": { "category": "Electronics" } }
+```
+
+**Available locations:**
+- **`query`** (default) - URL query string parameter
+- **`body`** - Request body (automatically switches to POST)
+- **`header`** - HTTP header
+
+**Important Notes:**
+- When any parameter uses `location: 'body'`, the request method automatically changes from GET to POST
+- You can mix different locations in the same request (query + body + headers)
+- Header names can be custom (e.g., `X-Page`, `X-Sort-By`)
+
+#### Disabling Query Parameters
+
+You can disable automatic query parameters globally or per-operation:
+
+**Global disable:**
+```typescript
+configureSymulate({
+  collections: {
+    disableQueryParams: true  // Disables for ALL collections
+  }
+});
+
+// No query parameters added
+await products.list({ page: 1, limit: 20 });
+// GET /api/products (no query params)
+```
+
+**Per-operation disable:**
+```typescript
+export const products = defineCollection<Product>({
+  name: 'products',
+  operations: {
+    list: {
+      disableQueryParams: true  // Disables only for this operation
+    }
+  }
+});
+```
+
+#### Common API Conventions
+
+**Laravel/Spring Boot style:**
+```typescript
+params: [
+  { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+  { name: 'per_page', location: 'query', role: 'pagination.limit', schema: m.number() },
+  { name: 'sort', location: 'query', role: 'sort.field', schema: m.string() },
+  { name: 'order', location: 'query', role: 'sort.order', schema: m.string() },
+]
+```
+
+**ASP.NET Core style:**
+```typescript
+params: [
+  { name: 'pageNumber', location: 'query', role: 'pagination.page', schema: m.number() },
+  { name: 'pageSize', location: 'query', role: 'pagination.limit', schema: m.number() },
+  { name: 'orderBy', location: 'query', role: 'sort.field', schema: m.string() },
+  { name: 'sortOrder', location: 'query', role: 'sort.order', schema: m.string() },
+]
+```
+
+**Django style:**
+```typescript
+params: [
+  { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+  { name: 'page_size', location: 'query', role: 'pagination.limit', schema: m.number() },
+  { name: 'ordering', location: 'query', role: 'sort.field', schema: m.string() },
+  { name: 'search', location: 'query', role: 'filter', schema: m.string() },
+]
+```
+
 ### Relations
 
 ```typescript

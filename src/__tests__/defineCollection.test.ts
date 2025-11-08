@@ -511,4 +511,408 @@ describe('defineCollection', () => {
       expect(hasCollection('non-existent')).toBe(false);
     });
   });
+
+  describe('Query Parameter Customization', () => {
+    it('should use custom parameter names with role-based params', async () => {
+      // Configure for production mode
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      // Mock fetch to capture URL
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'custom-params-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'pageNumber', location: 'query', role: 'pagination.page', schema: m.number() },
+              { name: 'pageSize', location: 'query', role: 'pagination.limit', schema: m.number() },
+              { name: 'orderBy', location: 'query', role: 'sort.field', schema: m.string() },
+              { name: 'direction', location: 'query', role: 'sort.order', schema: m.string() },
+            ]
+          }
+        }
+      });
+
+      await products.list({ page: 2, limit: 10, sortBy: 'price', sortOrder: 'desc' });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const callUrl = mockFetch.mock.calls[0][0].toString();
+
+      // Should use custom parameter names
+      expect(callUrl).toContain('pageNumber=2');
+      expect(callUrl).toContain('pageSize=10');
+      expect(callUrl).toContain('orderBy=price');
+      expect(callUrl).toContain('direction=desc');
+
+      // Should NOT use default parameter names
+      expect(callUrl).not.toContain('page=');
+      expect(callUrl).not.toContain('limit=');
+      expect(callUrl).not.toContain('sortBy=');
+      expect(callUrl).not.toContain('sortOrder=');
+    });
+
+    it('should use custom filter parameter name', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'filter-param-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'search', location: 'query', role: 'filter', schema: m.object() },
+            ]
+          }
+        }
+      });
+
+      await products.list({ filter: { category: 'Electronics' } });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const callUrl = mockFetch.mock.calls[0][0].toString();
+
+      // Should use 'search' instead of 'filter'
+      expect(callUrl).toContain('search=');
+      expect(callUrl).not.toContain('filter=');
+    });
+
+    it('should use default parameter names when no params defined', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'default-params-test',
+        schema: ProductSchema,
+      });
+
+      await products.list({ page: 1, limit: 10, sortBy: 'name' });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const callUrl = mockFetch.mock.calls[0][0].toString();
+
+      // Should use default parameter names
+      expect(callUrl).toContain('page=1');
+      expect(callUrl).toContain('limit=10');
+      expect(callUrl).toContain('sortBy=name');
+    });
+
+    it('should serialize filter as JSON string', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'filter-json-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'search', location: 'query', role: 'filter', schema: m.object() },
+            ]
+          }
+        }
+      });
+
+      const filterObj = { category: 'Electronics', inStock: true };
+      await products.list({ filter: filterObj });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const callUrl = mockFetch.mock.calls[0][0].toString();
+
+      // Filter should be JSON stringified
+      const expectedFilter = encodeURIComponent(JSON.stringify(filterObj));
+      expect(callUrl).toContain(`search=${expectedFilter}`);
+    });
+
+    it('should send parameters in query string by default', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'location-query-test',
+        schema: ProductSchema,
+      });
+
+      await products.list({ page: 2, limit: 15 });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const call = mockFetch.mock.calls[0];
+      const callUrl = call[0].toString();
+      const callOptions = call[1];
+
+      // Should be in query string
+      expect(callUrl).toContain('page=2');
+      expect(callUrl).toContain('limit=15');
+
+      // Should be GET request
+      expect(callOptions.method).toBe('GET');
+    });
+
+    it('should send parameters in request body when location is "body"', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'location-body-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'filter', location: 'body', role: 'filter', schema: m.object() },
+            ]
+          }
+        }
+      });
+
+      const filterObj = { category: 'Electronics' };
+      await products.list({ filter: filterObj });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const call = mockFetch.mock.calls[0];
+      const callOptions = call[1];
+
+      // Should be POST when body params are used
+      expect(callOptions.method).toBe('POST');
+
+      // Should have body with filter
+      const body = JSON.parse(callOptions.body);
+      expect(body.filter).toEqual(filterObj);
+    });
+
+    it('should send parameters in headers when location is "header"', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'location-header-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'X-Page', location: 'header', role: 'pagination.page', schema: m.number() },
+              { name: 'X-Sort-By', location: 'header', role: 'sort.field', schema: m.string() },
+            ]
+          }
+        }
+      });
+
+      await products.list({ page: 3, sortBy: 'name' });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const call = mockFetch.mock.calls[0];
+      const callOptions = call[1];
+
+      // Should be in headers
+      expect(callOptions.headers['X-Page']).toBe('3');
+      expect(callOptions.headers['X-Sort-By']).toBe('name');
+    });
+
+    it('should support mixing different parameter locations', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'location-mixed-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'page', location: 'query', role: 'pagination.page', schema: m.number() },
+              { name: 'limit', location: 'query', role: 'pagination.limit', schema: m.number() },
+              { name: 'filter', location: 'body', role: 'filter', schema: m.object() },
+              { name: 'X-Sort-Field', location: 'header', role: 'sort.field', schema: m.string() },
+            ]
+          }
+        }
+      });
+
+      const filterObj = { inStock: true };
+      await products.list({ page: 1, limit: 10, filter: filterObj, sortBy: 'price' });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const call = mockFetch.mock.calls[0];
+      const callUrl = call[0].toString();
+      const callOptions = call[1];
+
+      // Page and limit in query string
+      expect(callUrl).toContain('page=1');
+      expect(callUrl).toContain('limit=10');
+
+      // Filter in body (triggers POST)
+      expect(callOptions.method).toBe('POST');
+      const body = JSON.parse(callOptions.body);
+      expect(body.filter).toEqual(filterObj);
+
+      // Sort field in header
+      expect(callOptions.headers['X-Sort-Field']).toBe('price');
+    });
+
+    it('should use POST method when body parameters are present', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'location-post-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            params: [
+              { name: 'page', location: 'body', role: 'pagination.page', schema: m.number() },
+              { name: 'limit', location: 'body', role: 'pagination.limit', schema: m.number() },
+            ]
+          }
+        }
+      });
+
+      await products.list({ page: 2, limit: 25 });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const call = mockFetch.mock.calls[0];
+      const callOptions = call[1];
+
+      // Should automatically switch to POST
+      expect(callOptions.method).toBe('POST');
+
+      // Parameters should be in body
+      const body = JSON.parse(callOptions.body);
+      expect(body.page).toBe(2);
+      expect(body.limit).toBe(25);
+    });
+
+    it('should disable query params when disableQueryParams is true', async () => {
+      configureSymulate({
+        environment: 'production',
+        backendBaseUrl: 'http://localhost:3001',
+      });
+
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          data: [],
+          pagination: { page: 1, limit: 20, total: 0, totalPages: 0 }
+        })
+      });
+      global.fetch = mockFetch;
+
+      const products = defineCollection<Product>({
+        name: 'disabled-params-test',
+        schema: ProductSchema,
+        operations: {
+          list: {
+            disableQueryParams: true
+          }
+        }
+      });
+
+      await products.list({ page: 2, limit: 10, sortBy: 'name' });
+
+      expect(mockFetch).toHaveBeenCalled();
+      const callUrl = mockFetch.mock.calls[0][0].toString();
+
+      // Should NOT include any query parameters
+      expect(callUrl).not.toContain('page=');
+      expect(callUrl).not.toContain('limit=');
+      expect(callUrl).not.toContain('sortBy=');
+    });
+  });
 });

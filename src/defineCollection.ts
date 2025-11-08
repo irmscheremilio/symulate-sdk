@@ -1,9 +1,9 @@
 import { BaseSchema } from './schema';
-import { Collection, CollectionConfig, OperationName, QueryOptions, PaginatedResponse } from './collection.types';
+import { Collection, CollectionConfig, OperationName, QueryOptions, PaginatedResponse, OperationOptions } from './collection.types';
 import { DataStore } from './dataStore';
 import { getConfig, isDevelopment } from './config';
 import { registerCollection, getCollection } from './collectionRegistry';
-import { ErrorConfig } from './types';
+import { ErrorConfig, ParameterConfig, ParameterRole } from './types';
 import { schemaToTypeDescription } from './schema';
 import { PLATFORM_CONFIG } from './platformConfig';
 
@@ -88,6 +88,28 @@ async function throwGeneratedError(errorConfig: ErrorConfig, input: any, path: s
 }
 
 /**
+ * Extract parameter configuration by role from params array
+ * Returns the parameter config for a specific role, or undefined if not found
+ */
+function getParamByRole(params: ParameterConfig[] | undefined, role: ParameterRole): ParameterConfig | undefined {
+  if (!params) return undefined;
+  return params.find(p => p.role === role);
+}
+
+/**
+ * Get the fetch function to use for a request
+ * Priority: operation-level fetch > global config fetch > native fetch
+ */
+function getFetchFunction(operationFetch?: typeof fetch): typeof fetch {
+  if (operationFetch) return operationFetch;
+
+  const config = getConfig();
+  if (config.fetch) return config.fetch;
+
+  return fetch;
+}
+
+/**
  * Define a stateful CRUD collection
  *
  * @example
@@ -161,45 +183,59 @@ export function defineCollection<T extends Record<string, any>>(
     collection.list = async function(options?: QueryOptions): Promise<PaginatedResponse<T>> {
       if (!isDevelopment()) {
         // Production: call real backend
-        return await callBackendList(basePath, options);
+        return await callBackendList(normalizedConfig, basePath, options);
       }
 
       // Check for error conditions
       const operationConfig = getOperationConfig(normalizedConfig, 'list');
       await checkAndThrowError(operationConfig?.errors, options, basePath, 'GET');
 
-      // Map 'filters' to 'filter' for backward compatibility
-      const queryOptions = options || {};
-      if ((queryOptions as any).filters && !queryOptions.filter) {
-        queryOptions.filter = (queryOptions as any).filters;
-      }
+      // Check persistence mode
+      const globalConfig = getConfig();
+      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
 
-      return await store.query(queryOptions);
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        // Use local DataStore
+        return await store.query(options);
+      } else {
+        // Use edge function for server-side persistence
+        return await callStatefulList(normalizedConfig, options);
+      }
     };
   }
 
   if (enabledOps.get) {
-    collection.get = async function(id: string): Promise<T> {
+    collection.get = async function(id: string, options?: OperationOptions): Promise<T> {
       if (!isDevelopment()) {
-        return await callBackendGet(basePath, id);
+        return await callBackendGet(basePath, id, options);
       }
 
       // Check for error conditions
       const operationConfig = getOperationConfig(normalizedConfig, 'get');
       await checkAndThrowError(operationConfig?.errors, { id }, `${basePath}/${id}`, 'GET');
 
-      const item = await store.findById(id);
-      if (!item) {
-        throw new Error(`${normalizedConfig.name} not found: ${id}`);
+      // Check persistence mode
+      const globalConfig = getConfig();
+      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        // Use local DataStore
+        const item = await store.findById(id);
+        if (!item) {
+          throw new Error(`${normalizedConfig.name} not found: ${id}`);
+        }
+        return item;
+      } else {
+        // Use edge function for server-side persistence
+        return await callStatefulGet(normalizedConfig, id);
       }
-      return item;
     };
   }
 
   if (enabledOps.create) {
-    collection.create = async function(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>): Promise<T> {
+    collection.create = async function(data: Omit<T, 'id' | 'createdAt' | 'updatedAt'>, options?: OperationOptions): Promise<T> {
       if (!isDevelopment()) {
-        return await callBackendCreate(basePath, data);
+        return await callBackendCreate(basePath, data, options);
       }
 
       // Check for error conditions
@@ -212,7 +248,18 @@ export function defineCollection<T extends Record<string, any>>(
         processedData = await normalizedConfig.hooks.beforeCreate(processedData);
       }
 
-      const created = await store.insert(processedData);
+      // Check persistence mode
+      const globalConfig = getConfig();
+      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+
+      let created: T;
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        // Use local DataStore
+        created = await store.insert(processedData);
+      } else {
+        // Use edge function for server-side persistence
+        created = await callStatefulCreate<T>(normalizedConfig, processedData);
+      }
 
       if (normalizedConfig.hooks?.afterCreate) {
         await normalizedConfig.hooks.afterCreate(created);
@@ -223,9 +270,9 @@ export function defineCollection<T extends Record<string, any>>(
   }
 
   if (enabledOps.update) {
-    collection.update = async function(id: string, data: Partial<T>): Promise<T> {
+    collection.update = async function(id: string, data: Partial<T>, options?: OperationOptions): Promise<T> {
       if (!isDevelopment()) {
-        return await callBackendUpdate(basePath, id, data);
+        return await callBackendUpdate(basePath, id, data, options);
       }
 
       // Check for error conditions
@@ -237,9 +284,21 @@ export function defineCollection<T extends Record<string, any>>(
         processedData = await normalizedConfig.hooks.beforeUpdate(id, data);
       }
 
-      const updated = await store.update(id, processedData);
-      if (!updated) {
-        throw new Error(`${normalizedConfig.name} not found: ${id}`);
+      // Check persistence mode
+      const globalConfig = getConfig();
+      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+
+      let updated: T;
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        // Use local DataStore
+        const result = await store.update(id, processedData);
+        if (!result) {
+          throw new Error(`${normalizedConfig.name} not found: ${id}`);
+        }
+        updated = result;
+      } else {
+        // Use edge function for server-side persistence
+        updated = await callStatefulUpdate<T>(normalizedConfig, id, processedData);
       }
 
       if (normalizedConfig.hooks?.afterUpdate) {
@@ -251,18 +310,30 @@ export function defineCollection<T extends Record<string, any>>(
   }
 
   if (enabledOps.replace) {
-    collection.replace = async function(id: string, data: Omit<T, 'id'>): Promise<T> {
+    collection.replace = async function(id: string, data: Omit<T, 'id'>, options?: OperationOptions): Promise<T> {
       if (!isDevelopment()) {
-        return await callBackendReplace(basePath, id, data);
+        return await callBackendReplace(basePath, id, data, options);
       }
 
       // Check for error conditions
       const operationConfig = getOperationConfig(normalizedConfig, 'replace');
       await checkAndThrowError(operationConfig?.errors, { id, ...data }, `${basePath}/${id}`, 'PUT');
 
-      const replaced = await store.replace(id, data as T);
-      if (!replaced) {
-        throw new Error(`${normalizedConfig.name} not found: ${id}`);
+      // Check persistence mode
+      const globalConfig = getConfig();
+      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+
+      let replaced: T;
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        // Use local DataStore
+        const result = await store.replace(id, data as T);
+        if (!result) {
+          throw new Error(`${normalizedConfig.name} not found: ${id}`);
+        }
+        replaced = result;
+      } else {
+        // Use edge function for server-side persistence (replace is same as update)
+        replaced = await callStatefulUpdate<T>(normalizedConfig, id, data as T);
       }
 
       return replaced;
@@ -270,15 +341,21 @@ export function defineCollection<T extends Record<string, any>>(
   }
 
   if (enabledOps.delete) {
-    collection.delete = async function(id: string): Promise<void> {
+    collection.delete = async function(id: string, options?: OperationOptions): Promise<void> {
       if (!isDevelopment()) {
-        return await callBackendDelete(basePath, id);
+        return await callBackendDelete(basePath, id, options);
       }
 
-      // Get the item first for error check
-      const item = await store.findById(id);
-      if (!item) {
-        throw new Error(`${normalizedConfig.name} not found: ${id}`);
+      // Check persistence mode
+      const globalConfig = getConfig();
+      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+
+      // Get item for error check (use appropriate method based on persistence mode)
+      let item: T | null;
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        item = await store.findById(id);
+      } else {
+        item = await callStatefulGet<T>(normalizedConfig, id);
       }
 
       // Check for error conditions
@@ -289,7 +366,14 @@ export function defineCollection<T extends Record<string, any>>(
         await normalizedConfig.hooks.beforeDelete(id);
       }
 
-      const deleted = await store.delete(id);
+      // Delete using appropriate method
+      if (persistenceMode === 'memory' || persistenceMode === 'local') {
+        // Use local DataStore
+        await store.delete(id);
+      } else {
+        // Use edge function for server-side persistence
+        await callStatefulDelete(normalizedConfig, id);
+      }
 
       if (normalizedConfig.hooks?.afterDelete) {
         await normalizedConfig.hooks.afterDelete(id);
@@ -431,40 +515,90 @@ function capitalize(str: string): string {
 // Production mode backend calls
 // These make standard HTTP requests to the real backend
 
-async function callBackendList(basePath: string, options?: QueryOptions): Promise<any> {
+async function callBackendList(collectionConfig: any, basePath: string, options?: QueryOptions): Promise<any> {
   const config = getConfig();
   const url = new URL(basePath, config.backendBaseUrl);
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  let body: Record<string, any> | undefined;
 
-  if (options) {
-    if (options.page) url.searchParams.set('page', options.page.toString());
-    if (options.limit) url.searchParams.set('limit', options.limit.toString());
-    if (options.sortBy) url.searchParams.set('sortBy', options.sortBy);
-    if (options.sortOrder) url.searchParams.set('sortOrder', options.sortOrder);
+  // Check if query params are disabled
+  const globalDisabled = config.collections?.disableQueryParams === true;
+  const operationConfig = getOperationConfig(collectionConfig, 'list');
+  const operationDisabled = operationConfig?.disableQueryParams === true;
+
+  if (options && !globalDisabled && !operationDisabled) {
+    // Get params from operation config
+    const params = operationConfig?.params;
+
+    // Helper to add parameter based on role or default
+    const addParam = (role: ParameterRole, defaultName: string, value: any) => {
+      if (!value) return;
+
+      // Try to find param with this role
+      const param = getParamByRole(params, role);
+
+      // Use param config if found, otherwise use defaults
+      const name = param?.name || defaultName;
+      const location = param?.location || 'query';
+      const stringValue = typeof value === 'object' ? JSON.stringify(value) : value.toString();
+
+      if (location === 'query') {
+        url.searchParams.set(name, stringValue);
+      } else if (location === 'body') {
+        if (!body) body = {};
+        body[name] = value;
+      } else if (location === 'header') {
+        headers[name] = stringValue;
+      }
+    };
+
+    // Add parameters based on their roles
+    addParam('pagination.page', 'page', options.page);
+    addParam('pagination.limit', 'limit', options.limit);
+    addParam('sort.field', 'sortBy', options.sortBy);
+    addParam('sort.order', 'sortOrder', options.sortOrder);
+    addParam('filter', 'filter', options.filter);
   }
 
-  const response = await fetch(url.toString());
+  const fetchOptions: RequestInit = {
+    method: 'GET',
+    headers
+  };
+
+  // If we have body params, we need to send as POST (GET with body is non-standard)
+  if (body) {
+    fetchOptions.method = 'POST';
+    fetchOptions.body = JSON.stringify(body);
+  }
+
+  const customFetch = getFetchFunction(options?.fetch);
+  const response = await customFetch(url.toString(), fetchOptions);
   if (!response.ok) {
     throw new Error(`Failed to fetch ${basePath}: ${response.statusText}`);
   }
   return await response.json();
 }
 
-async function callBackendGet(basePath: string, id: string): Promise<any> {
+async function callBackendGet(basePath: string, id: string, options?: OperationOptions): Promise<any> {
   const config = getConfig();
   const url = `${config.backendBaseUrl}${basePath}/${id}`;
 
-  const response = await fetch(url);
+  const customFetch = getFetchFunction(options?.fetch);
+  const response = await customFetch(url);
   if (!response.ok) {
     throw new Error(`Failed to fetch ${basePath}/${id}: ${response.statusText}`);
   }
   return await response.json();
 }
 
-async function callBackendCreate(basePath: string, data: any): Promise<any> {
+async function callBackendCreate(basePath: string, data: any, options?: OperationOptions): Promise<any> {
   const config = getConfig();
   const url = `${config.backendBaseUrl}${basePath}`;
 
-  const response = await fetch(url, {
+  const customFetch = getFetchFunction(options?.fetch);
+  const response = await customFetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -476,11 +610,12 @@ async function callBackendCreate(basePath: string, data: any): Promise<any> {
   return await response.json();
 }
 
-async function callBackendUpdate(basePath: string, id: string, data: any): Promise<any> {
+async function callBackendUpdate(basePath: string, id: string, data: any, options?: OperationOptions): Promise<any> {
   const config = getConfig();
   const url = `${config.backendBaseUrl}${basePath}/${id}`;
 
-  const response = await fetch(url, {
+  const customFetch = getFetchFunction(options?.fetch);
+  const response = await customFetch(url, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -492,11 +627,12 @@ async function callBackendUpdate(basePath: string, id: string, data: any): Promi
   return await response.json();
 }
 
-async function callBackendReplace(basePath: string, id: string, data: any): Promise<any> {
+async function callBackendReplace(basePath: string, id: string, data: any, options?: OperationOptions): Promise<any> {
   const config = getConfig();
   const url = `${config.backendBaseUrl}${basePath}/${id}`;
 
-  const response = await fetch(url, {
+  const customFetch = getFetchFunction(options?.fetch);
+  const response = await customFetch(url, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -508,11 +644,12 @@ async function callBackendReplace(basePath: string, id: string, data: any): Prom
   return await response.json();
 }
 
-async function callBackendDelete(basePath: string, id: string): Promise<void> {
+async function callBackendDelete(basePath: string, id: string, options?: OperationOptions): Promise<void> {
   const config = getConfig();
   const url = `${config.backendBaseUrl}${basePath}/${id}`;
 
-  const response = await fetch(url, {
+  const customFetch = getFetchFunction(options?.fetch);
+  const response = await customFetch(url, {
     method: 'DELETE',
   });
 
@@ -530,4 +667,178 @@ async function callBackendRelation(basePath: string, parentId: string, relationN
     throw new Error(`Failed to fetch ${basePath}/${parentId}/${relationName}: ${response.statusText}`);
   }
   return await response.json();
+}
+
+/**
+ * Call edge function for stateful list operation
+ */
+async function callStatefulList<T>(collectionConfig: any, options?: QueryOptions): Promise<PaginatedResponse<T>> {
+  const globalConfig = getConfig();
+  const { schemaToTypeDescription } = await import('./schema');
+
+  const entitySchema = schemaToTypeDescription(collectionConfig.schema);
+  const operationConfig = getOperationConfig(collectionConfig, 'list');
+  const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
+  const branch = globalConfig.collections?.branch || 'main';
+
+  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-mockend-api-key': globalConfig.symulateApiKey || '',
+      'x-mockend-project-id': globalConfig.projectId || '',
+      'x-symulate-stateful-operation': 'list'
+    },
+    body: JSON.stringify({
+      collectionName: collectionConfig.name,
+      operation: 'list',
+      entitySchema,
+      responseSchema,
+      instruction: collectionConfig.seedInstruction,
+      branch,
+      page: options?.page || 1,
+      limit: options?.limit || 20,
+      sortBy: options?.sortBy,
+      sortOrder: options?.sortOrder,
+      filters: options?.filter
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stateful list failed: ${response.statusText}`);
+  }
+
+  return (await response.json()) as PaginatedResponse<T>;
+}
+
+/**
+ * Call edge function for stateful get operation
+ */
+async function callStatefulGet<T>(collectionConfig: any, id: string): Promise<T> {
+  const globalConfig = getConfig();
+  const { schemaToTypeDescription } = await import('./schema');
+
+  const entitySchema = schemaToTypeDescription(collectionConfig.schema);
+  const operationConfig = getOperationConfig(collectionConfig, 'get');
+  const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
+
+  // First get the full list to find the item
+  const listResponse = await callStatefulList<T>(collectionConfig, { page: 1, limit: 1000 });
+  const item = listResponse.data.find((i: any) => i.id === id);
+
+  if (!item) {
+    throw new Error(`${collectionConfig.name} not found: ${id}`);
+  }
+
+  return item as T;
+}
+
+/**
+ * Call edge function for stateful create operation
+ */
+async function callStatefulCreate<T>(collectionConfig: any, data: any): Promise<T> {
+  const globalConfig = getConfig();
+  const { schemaToTypeDescription } = await import('./schema');
+
+  const entitySchema = schemaToTypeDescription(collectionConfig.schema);
+  const operationConfig = getOperationConfig(collectionConfig, 'create');
+  const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
+  const branch = globalConfig.collections?.branch || 'main';
+
+  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-mockend-api-key': globalConfig.symulateApiKey || '',
+      'x-mockend-project-id': globalConfig.projectId || '',
+      'x-symulate-stateful-operation': 'create'
+    },
+    body: JSON.stringify({
+      collectionName: collectionConfig.name,
+      operation: 'create',
+      entitySchema,
+      responseSchema,
+      branch,
+      data
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stateful create failed: ${response.statusText}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+/**
+ * Call edge function for stateful update operation
+ */
+async function callStatefulUpdate<T>(collectionConfig: any, id: string, data: any): Promise<T> {
+  const globalConfig = getConfig();
+  const { schemaToTypeDescription } = await import('./schema');
+
+  const entitySchema = schemaToTypeDescription(collectionConfig.schema);
+  const operationConfig = getOperationConfig(collectionConfig, 'update');
+  const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
+  const branch = globalConfig.collections?.branch || 'main';
+
+  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-mockend-api-key': globalConfig.symulateApiKey || '',
+      'x-mockend-project-id': globalConfig.projectId || '',
+      'x-symulate-stateful-operation': 'update'
+    },
+    body: JSON.stringify({
+      collectionName: collectionConfig.name,
+      operation: 'update',
+      entitySchema,
+      responseSchema,
+      branch,
+      id,
+      data
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stateful update failed: ${response.statusText}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+/**
+ * Call edge function for stateful delete operation
+ */
+async function callStatefulDelete(collectionConfig: any, id: string): Promise<void> {
+  const globalConfig = getConfig();
+  const { schemaToTypeDescription } = await import('./schema');
+
+  const entitySchema = schemaToTypeDescription(collectionConfig.schema);
+  const operationConfig = getOperationConfig(collectionConfig, 'delete');
+  const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
+  const branch = globalConfig.collections?.branch || 'main';
+
+  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-mockend-api-key': globalConfig.symulateApiKey || '',
+      'x-mockend-project-id': globalConfig.projectId || '',
+      'x-symulate-stateful-operation': 'delete'
+    },
+    body: JSON.stringify({
+      collectionName: collectionConfig.name,
+      operation: 'delete',
+      entitySchema,
+      responseSchema,
+      branch,
+      id
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Stateful delete failed: ${response.statusText}`);
+  }
 }
