@@ -103,6 +103,84 @@ export interface OperationsConfig {
 }
 
 /**
+ * Built-in generator types for auto-generated fields
+ */
+export type GeneratorType =
+  | 'uuid'        // Generate UUID (crypto.randomUUID())
+  | 'timestamp'   // Generate ISO timestamp
+  | 'nanoid'      // Generate NanoID
+  | 'cuid'        // Generate CUID
+  | 'increment'   // Auto-incrementing integer
+  | 'ai';         // AI-powered generation with instruction
+
+/**
+ * Custom generator function that receives the data being created/updated
+ */
+export type CustomGeneratorFunction = (data: any) => any | Promise<any>;
+
+/**
+ * Configuration for a single auto-generated field
+ */
+export interface AutoGenerateFieldConfig {
+  /**
+   * Generator type or custom function
+   */
+  generator: GeneratorType | CustomGeneratorFunction;
+
+  /**
+   * Instruction for AI generator (only used when generator is 'ai')
+   */
+  instruction?: string;
+
+  /**
+   * Field dependencies - this field will only be generated if these fields are present
+   * Supports dot notation for nested fields (e.g., 'author.email')
+   */
+  dependsOn?: string[];
+
+  /**
+   * Condition function - field is only generated if this returns true
+   */
+  condition?: (data: any) => boolean | Promise<boolean>;
+
+  /**
+   * Whether to generate on create
+   * @default true
+   */
+  onCreate?: boolean;
+
+  /**
+   * Whether to regenerate on update
+   * @default false
+   */
+  onUpdate?: boolean;
+
+  /**
+   * Cache the generated value (don't regenerate on updates even if onUpdate is true)
+   * Useful for stable fields like slugs
+   * @default false
+   */
+  cache?: boolean;
+}
+
+/**
+ * Auto-generate configuration
+ * Maps field names to their generation config
+ *
+ * Supports shorthand syntax for common generators:
+ * @example
+ * {
+ *   id: 'uuid',  // Shorthand
+ *   slug: {      // Full config
+ *     generator: 'ai',
+ *     instruction: 'Create URL-friendly slug from title',
+ *     dependsOn: ['title']
+ *   }
+ * }
+ */
+export type AutoGenerateConfig = Record<string, GeneratorType | CustomGeneratorFunction | AutoGenerateFieldConfig>;
+
+/**
  * Configuration for a related collection
  */
 export interface RelationConfig {
@@ -185,6 +263,24 @@ export interface CollectionConfig<T = any> {
    * @example { name: 'person', plural: 'people' }
    */
   plural?: string;
+
+  /**
+   * Auto-generate field configuration
+   * Defines which fields should be automatically generated on create/update
+   *
+   * @example
+   * autoGenerate: {
+   *   id: 'uuid',
+   *   createdAt: 'timestamp',
+   *   updatedAt: { generator: 'timestamp', onCreate: true, onUpdate: true },
+   *   slug: {
+   *     generator: 'ai',
+   *     instruction: 'Create URL-friendly slug from title',
+   *     dependsOn: ['title']
+   *   }
+   * }
+   */
+  autoGenerate?: AutoGenerateConfig;
 
   /**
    * Lifecycle hooks (future enhancement)

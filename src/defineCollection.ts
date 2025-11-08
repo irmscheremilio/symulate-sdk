@@ -110,6 +110,48 @@ function getFetchFunction(operationFetch?: typeof fetch): typeof fetch {
 }
 
 /**
+ * Serialize autoGenerate config for sending to edge function
+ * Converts functions to a serializable format
+ */
+function serializeAutoGenerate(autoGenerate?: any): any {
+  if (!autoGenerate) return undefined;
+
+  const serialized: any = {};
+
+  for (const [fieldName, config] of Object.entries(autoGenerate)) {
+    if (typeof config === 'function') {
+      // Custom generator function - cannot be serialized, warn user
+      console.warn(`[Symulate] Custom generator functions for field '${fieldName}' are not supported in stateful collections. Use built-in generators or 'ai' mode instead.`);
+      continue;
+    }
+
+    if (typeof config === 'string') {
+      // Shorthand syntax - pass through
+      serialized[fieldName] = config;
+    } else if (typeof config === 'object') {
+      // Full config object
+      const configCopy: any = { ...config };
+
+      // Check if generator is a function
+      if (typeof configCopy.generator === 'function') {
+        console.warn(`[Symulate] Custom generator functions for field '${fieldName}' are not supported in stateful collections. Use built-in generators or 'ai' mode instead.`);
+        continue;
+      }
+
+      // Check if condition is a function
+      if (typeof configCopy.condition === 'function') {
+        console.warn(`[Symulate] Condition functions for field '${fieldName}' are not supported in stateful collections. The field will be generated unconditionally.`);
+        delete configCopy.condition;
+      }
+
+      serialized[fieldName] = configCopy;
+    }
+  }
+
+  return Object.keys(serialized).length > 0 ? serialized : undefined;
+}
+
+/**
  * Define a stateful CRUD collection
  *
  * @example
@@ -700,7 +742,8 @@ async function callStatefulList<T>(collectionConfig: any, options?: QueryOptions
       limit: options?.limit || 20,
       sortBy: options?.sortBy,
       sortOrder: options?.sortOrder,
-      filters: options?.filter
+      filters: options?.filter,
+      autoGenerate: serializeAutoGenerate(collectionConfig.autoGenerate)
     })
   });
 
@@ -759,7 +802,8 @@ async function callStatefulCreate<T>(collectionConfig: any, data: any): Promise<
       entitySchema,
       responseSchema,
       branch,
-      data
+      data,
+      autoGenerate: serializeAutoGenerate(collectionConfig.autoGenerate)
     })
   });
 
@@ -797,7 +841,8 @@ async function callStatefulUpdate<T>(collectionConfig: any, id: string, data: an
       responseSchema,
       branch,
       id,
-      data
+      data,
+      autoGenerate: serializeAutoGenerate(collectionConfig.autoGenerate)
     })
   });
 
