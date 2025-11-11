@@ -22,13 +22,30 @@ function getAuthSession(): any {
 export async function generateWithAI(options: AIProviderOptions): Promise<any> {
   const config = getConfig();
 
-  if (!config.symulateApiKey) {
-    throw new Error(
-      "No Mockend API key configured. Get your free API key at https://platform.symulate.dev"
-    );
+  // Priority 1: Use BYOK (Bring Your Own Key) if configured
+  if (config.openaiApiKey) {
+    console.log("[Symulate] Using BYOK mode (OpenAI direct)");
+    const { generateWithOpenAI } = await import("./openaiProvider");
+    return generateWithOpenAI(options, config.openaiApiKey);
   }
 
-  return generateWithPlatform(options, config.symulateApiKey);
+  // Priority 2: Use Symulate Platform API
+  if (config.symulateApiKey) {
+    return generateWithPlatform(options, config.symulateApiKey);
+  }
+
+  // No API key configured
+  throw new Error(
+    "No API key configured. Choose one:\n\n" +
+    "Option 1 - BYOK (Free tier with your OpenAI key):\n" +
+    "  configureSymulate({ openaiApiKey: 'sk-...' })\n" +
+    "  Get OpenAI key: https://platform.openai.com/api-keys\n\n" +
+    "Option 2 - Symulate Platform (Managed service):\n" +
+    "  configureSymulate({ symulateApiKey: 'sym_live_...' })\n" +
+    "  Get Symulate key: https://platform.symulate.dev\n\n" +
+    "Option 3 - Faker mode (No AI, free forever):\n" +
+    "  configureSymulate({ generateMode: 'faker' })"
+  );
 }
 
 async function generateWithPlatform(options: AIProviderOptions, apiKey: string): Promise<any> {

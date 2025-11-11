@@ -552,6 +552,7 @@ collectionsCommand
   .command("pregenerate")
   .description("Pre-generate all defined collections")
   .option("-b, --branch <name>", "Target branch (default: main)")
+  .option("--skip-sync", "Skip the sync prompt and proceed directly to pre-generation")
   .action(async (options) => {
     try {
       const { getCurrentContext, getAuthSession } = await import("../auth");
@@ -564,6 +565,35 @@ collectionsCommand
         );
         console.log("[Symulate] Run 'npx symulate login' to get started");
         process.exit(1);
+      }
+
+      // Ask if user wants to sync first (unless --skip-sync is provided)
+      if (!options.skipSync) {
+        console.log('\n[Symulate] 📋 Pre-generation requires up-to-date collection schemas.\n');
+
+        const readline = await import('readline');
+        const rl = readline.createInterface({
+          input: process.stdin,
+          output: process.stdout
+        });
+
+        const shouldSync = await new Promise<boolean>((resolve) => {
+          rl.question('[Symulate] Do you want to sync your collection schemas first? (Y/n): ', (answer) => {
+            rl.close();
+            const normalized = answer.trim().toLowerCase();
+            // Default to yes if empty or 'y'
+            resolve(normalized === '' || normalized === 'y' || normalized === 'yes');
+          });
+        });
+
+        if (shouldSync) {
+          console.log('[Symulate] Running sync...\n');
+          const { syncEndpoints } = await import("../sync");
+          await syncEndpoints();
+          console.log(''); // Add spacing
+        } else {
+          console.log('[Symulate] Skipping sync, using existing schemas...\n');
+        }
       }
 
       const { pregenerateCollections } = await import("./collections");

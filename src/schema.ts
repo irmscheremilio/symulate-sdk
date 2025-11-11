@@ -30,13 +30,21 @@ export type SchemaType =
   | "commerce.price"
   | "lorem.word"
   | "lorem.sentence"
-  | "lorem.paragraph";
+  | "lorem.paragraph"
+  | "collectionsMeta.page"
+  | "collectionsMeta.limit"
+  | "collectionsMeta.total"
+  | "collectionsMeta.totalPages"
+  | string; // Allow dynamic collectionsMeta types like "collectionsMeta.avg:price"
+
+export type JsonType = "string" | "number" | "boolean" | "object" | "array";
 
 export interface BaseSchema<T = any> {
   _type: T;
   _meta: {
     schemaType: SchemaType | "object" | "array";
     description?: string;
+    dataType?: JsonType; // Optional override for JSON type
   };
 }
 
@@ -44,6 +52,7 @@ export interface StringSchema extends BaseSchema<string> {
   _meta: {
     schemaType: SchemaType;
     description?: string;
+    dataType?: JsonType;
     dbReference?: {
       schema?: string;
       table: string;
@@ -54,8 +63,9 @@ export interface StringSchema extends BaseSchema<string> {
 
 export interface NumberSchema extends BaseSchema<number> {
   _meta: {
-    schemaType: "number" | "commerce.price";
+    schemaType: "number" | "commerce.price" | "collectionsMeta.page" | "collectionsMeta.limit" | "collectionsMeta.total" | "collectionsMeta.totalPages" | string;
     description?: string;
+    dataType?: JsonType;
     dbReference?: {
       schema?: string;
       table: string;
@@ -68,6 +78,7 @@ export interface BooleanSchema extends BaseSchema<boolean> {
   _meta: {
     schemaType: "boolean";
     description?: string;
+    dataType?: JsonType;
     dbReference?: {
       schema?: string;
       table: string;
@@ -80,6 +91,7 @@ export interface ObjectSchema<T extends Record<string, any>> extends BaseSchema<
   _meta: {
     schemaType: "object";
     description?: string;
+    dataType?: JsonType;
   };
   _shape: { [K in keyof T]: BaseSchema<T[K]> };
 }
@@ -88,6 +100,7 @@ export interface ArraySchema<T> extends BaseSchema<T[]> {
   _meta: {
     schemaType: "array";
     description?: string;
+    dataType?: JsonType;
   };
   _element: BaseSchema<T>;
 }
@@ -95,159 +108,300 @@ export interface ArraySchema<T> extends BaseSchema<T[]> {
 // Type inference helper
 export type Infer<T extends BaseSchema> = T["_type"];
 
+// Schema builder options
+export interface SchemaOptions {
+  description?: string;
+  dataType?: JsonType;
+}
+
 // Schema builders
 export class SchemaBuilder {
   // Primitive types
-  uuid(description?: string): StringSchema {
+  uuid(options?: string | SchemaOptions): StringSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: "" as string,
-      _meta: { schemaType: "uuid", description },
+      _meta: { schemaType: "uuid", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  string(description?: string): StringSchema {
+  string(options?: string | SchemaOptions): StringSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: "" as string,
-      _meta: { schemaType: "string", description },
+      _meta: { schemaType: "string", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  number(description?: string): NumberSchema {
+  number(options?: string | SchemaOptions): NumberSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: 0 as number,
-      _meta: { schemaType: "number", description },
+      _meta: { schemaType: "number", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  boolean(description?: string): BooleanSchema {
+  boolean(options?: string | SchemaOptions): BooleanSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: false as boolean,
-      _meta: { schemaType: "boolean", description },
+      _meta: { schemaType: "boolean", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  date(description?: string): StringSchema {
+  date(options?: string | SchemaOptions): StringSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: "" as string,
-      _meta: { schemaType: "date", description },
+      _meta: { schemaType: "date", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  email(description?: string): StringSchema {
+  email(options?: string | SchemaOptions): StringSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: "" as string,
-      _meta: { schemaType: "email", description },
+      _meta: { schemaType: "email", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  url(description?: string): StringSchema {
+  url(options?: string | SchemaOptions): StringSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: "" as string,
-      _meta: { schemaType: "url", description },
+      _meta: { schemaType: "url", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
-  phoneNumber(description?: string): StringSchema {
+  phoneNumber(options?: string | SchemaOptions): StringSchema {
+    const opts = typeof options === 'string' ? { description: options } : options;
     return {
       _type: "" as string,
-      _meta: { schemaType: "phoneNumber", description },
+      _meta: { schemaType: "phoneNumber", description: opts?.description, dataType: opts?.dataType },
     };
   }
 
   // Person fields
   person = {
-    fullName: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "person.fullName", description },
-    }),
-    firstName: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "person.firstName", description },
-    }),
-    lastName: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "person.lastName", description },
-    }),
-    jobTitle: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "person.jobTitle", description },
-    }),
+    fullName: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "person.fullName", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    firstName: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "person.firstName", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    lastName: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "person.lastName", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    jobTitle: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "person.jobTitle", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
   };
 
   // Internet fields
   internet = {
-    userName: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "internet.userName", description },
-    }),
-    avatar: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "internet.avatar", description },
-    }),
+    userName: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "internet.userName", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    avatar: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "internet.avatar", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
   };
 
   // Location fields
   location = {
-    street: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.street", description },
-    }),
-    city: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.city", description },
-    }),
-    state: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.state", description },
-    }),
-    zipCode: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.zipCode", description },
-    }),
-    country: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.country", description },
-    }),
-    latitude: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.latitude", description },
-    }),
-    longitude: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "location.longitude", description },
-    }),
+    street: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.street", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    city: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.city", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    state: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.state", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    zipCode: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.zipCode", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    country: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.country", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    latitude: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.latitude", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    longitude: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "location.longitude", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
   };
 
   // Commerce fields
   commerce = {
-    productName: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "commerce.productName", description },
-    }),
-    department: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "commerce.department", description },
-    }),
-    price: (description?: string): NumberSchema => ({
-      _type: 0 as number,
-      _meta: { schemaType: "commerce.price", description },
-    }),
+    productName: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "commerce.productName", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    department: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "commerce.department", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    price: (options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: "commerce.price", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
   };
 
   // Lorem fields
   lorem = {
-    word: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "lorem.word", description },
-    }),
-    sentence: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "lorem.sentence", description },
-    }),
-    paragraph: (description?: string): StringSchema => ({
-      _type: "" as string,
-      _meta: { schemaType: "lorem.paragraph", description },
-    }),
+    word: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "lorem.word", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    sentence: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "lorem.sentence", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    paragraph: (options?: string | SchemaOptions): StringSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: "" as string,
+        _meta: { schemaType: "lorem.paragraph", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+  };
+
+  // Collections meta fields - populated automatically during list operations
+  collectionsMeta = {
+    // Pagination fields
+    page: (options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: "collectionsMeta.page", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    limit: (options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: "collectionsMeta.limit", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    total: (options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: "collectionsMeta.total", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    totalPages: (options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: "collectionsMeta.totalPages", description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+
+    // Aggregate functions - calculated over all items (not just current page)
+    avg: (fieldName: string, options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: `collectionsMeta.avg:${fieldName}`, description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    sum: (fieldName: string, options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: `collectionsMeta.sum:${fieldName}`, description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    min: (fieldName: string, options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: `collectionsMeta.min:${fieldName}`, description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    max: (fieldName: string, options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: `collectionsMeta.max:${fieldName}`, description: opts?.description, dataType: opts?.dataType },
+      };
+    },
+    count: (fieldName: string, value: any, options?: string | SchemaOptions): NumberSchema => {
+      const opts = typeof options === 'string' ? { description: options } : options;
+      return {
+        _type: 0 as number,
+        _meta: { schemaType: `collectionsMeta.count:${fieldName}:${JSON.stringify(value)}`, description: opts?.description, dataType: opts?.dataType },
+      };
+    },
   };
 
   // Database type reference
@@ -421,6 +575,12 @@ export function schemaToTypeDescription(schema: BaseSchema): any {
     return [schemaToTypeDescription(arrSchema._element)];
   }
 
+  // For collectionsMeta fields, return the schemaType itself (not a description)
+  // This allows edge functions to detect and populate these fields
+  if (schema._meta.schemaType.startsWith && schema._meta.schemaType.startsWith("collectionsMeta.")) {
+    return schema._meta.schemaType;
+  }
+
   // Return a descriptive string for the AI
   const typeDescriptions: Record<string, string> = {
     uuid: "UUID string",
@@ -454,4 +614,41 @@ export function schemaToTypeDescription(schema: BaseSchema): any {
 
   const desc = typeDescriptions[schema._meta.schemaType as string] || schema._meta.schemaType;
   return schema._meta.description ? `${desc} (${schema._meta.description})` : desc;
+}
+
+/**
+ * Populate collectionsMeta values in a response based on schema
+ * Walks through the schema and replaces collectionsMeta.* fields with actual values
+ */
+export function populateCollectionsMeta(
+  schema: BaseSchema,
+  metaValues: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  }
+): any {
+  if (schema._meta.schemaType === "object") {
+    const objSchema = schema as ObjectSchema<any>;
+    const result: any = {};
+    for (const key in objSchema._shape) {
+      result[key] = populateCollectionsMeta(objSchema._shape[key], metaValues);
+    }
+    return result;
+  }
+
+  if (schema._meta.schemaType === "array") {
+    // Arrays don't contain meta values, return empty array
+    return [];
+  }
+
+  // Check if this is a collectionsMeta field
+  if (schema._meta.schemaType.startsWith("collectionsMeta.")) {
+    const metaField = schema._meta.schemaType.split(".")[1] as keyof typeof metaValues;
+    return metaValues[metaField];
+  }
+
+  // For other types, return undefined (they should be overwritten by actual data)
+  return undefined;
 }

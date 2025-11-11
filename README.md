@@ -64,14 +64,180 @@ const users = await getUsers();
 console.log(users); // Fully typed as User[]
 ```
 
+## Open Source & Free - Three Usage Modes
+
+Symulate SDK is **fully open source** (MIT License) and can be used completely free. Choose the mode that fits your needs:
+
+### 🎯 Mode 1: Faker Mode (100% Free, No API Key)
+
+Perfect for CI/CD, testing, and basic prototyping. No API keys required at all!
+
+```typescript
+import { defineEndpoint, configureSymulate, m } from "@symulate/sdk";
+
+// No API key needed!
+configureSymulate({
+  generateMode: "faker", // Uses Faker.js for deterministic data
+});
+
+const UserSchema = m.object({
+  id: m.uuid(),
+  name: m.person.fullName(),
+  email: m.email(),
+});
+
+export const getUsers = defineEndpoint({
+  path: "/api/users",
+  method: "GET",
+  schema: UserSchema,
+  mock: { count: 10 },
+});
+
+// Use it - completely free!
+const users = await getUsers();
+```
+
+### 🚀 Mode 2: BYOK - Bring Your Own Key (OpenAI)
+
+Get AI-powered realistic data with your own OpenAI API key. No Symulate account needed!
+
+```typescript
+import { defineCollection, configureSymulate, m, type Infer } from "@symulate/sdk";
+
+// Configure with your OpenAI API key
+configureSymulate({
+  openaiApiKey: process.env.OPENAI_API_KEY, // Your OpenAI key
+  generateMode: "ai", // Use AI generation
+  // persistence defaults to "local" automatically!
+});
+
+// Define a collection with full CRUD operations
+const ProductSchema = m.object({
+  id: m.uuid(),
+  name: m.string(),
+  price: m.number({ min: 10, max: 1000 }),
+  category: m.string(),
+  inStock: m.boolean(),
+});
+
+export type Product = Infer<typeof ProductSchema>;
+
+export const products = defineCollection<Product>({
+  name: "products",
+  basePath: "/api/products",
+  schema: ProductSchema,
+  seedCount: 20,
+  seedInstruction: "Generate realistic e-commerce products",
+});
+
+// Use it - full CRUD with AI-generated data
+const { data } = await products.list();
+await products.create({ name: "New Item", price: 29.99, category: "Electronics", inStock: true });
+await products.update("id", { price: 24.99 });
+await products.delete("id");
+```
+
+### 💼 Mode 3: Symulate Platform (Paid, Full Features)
+
+Get cloud hosting, team collaboration, branch isolation, and priority support.
+
+```typescript
+configureSymulate({
+  symulateApiKey: process.env.SYMULATE_API_KEY,
+  projectId: process.env.SYMULATE_PROJECT_ID,
+  generateMode: "ai", // AI included
+  // Cloud persistence automatic
+});
+```
+
+### Feature Comparison
+
+| Feature | Faker Mode | BYOK (OpenAI) | Symulate Platform |
+|---------|-----------|---------------|-------------------|
+| **Cost** | 🎉 **100% Free** | ~$0.001/generation | Starting $49/month |
+| **API Key Required** | ❌ None | Your OpenAI key | Platform key (included) |
+| **Data Quality** | Basic (Faker.js) | ✨ AI-realistic | ✨ AI-realistic |
+| **CRUD Collections** | ✅ Full support | ✅ Full support | ✅ Full support |
+| **Endpoints** | ✅ Full support | ✅ Full support | ✅ Full support |
+| **Persistence** | Memory/Local | ✅ Local (auto) | ✅ Cloud + Local |
+| **Delay Simulation** | ✅ | ✅ | ✅ |
+| **Error Simulation** | ✅ | ✅ | ✅ |
+| **Branch Isolation** | ❌ | ❌ | ✅ Multi-tenant |
+| **Team Collaboration** | ❌ | ❌ | ✅ Shared access |
+| **Custom Domains** | ❌ | ❌ | ✅ demo.agency.com |
+| **Analytics** | ❌ | ❌ | ✅ Usage tracking |
+| **Support** | Community | Community | Priority |
+
+### Which Mode to Choose?
+
+**🎯 Choose Faker Mode if:**
+- You're running CI/CD pipelines
+- You need deterministic test data
+- You want to prototype without any setup
+- You don't need realistic data (just valid data)
+- You want 100% free forever
+
+**🚀 Choose BYOK if:**
+- You want AI-realistic data
+- You're an individual developer or small team
+- You have your own OpenAI API key
+- You need local persistence (no cloud)
+- You want full SDK features without vendor lock-in
+- Perfect for: personal projects, prototyping, learning
+
+**💼 Choose Platform if:**
+- You're an agency needing client-specific demos
+- You need branch isolation (multi-tenant data)
+- You want team collaboration features
+- You need cloud hosting without setup
+- You need professional support
+- Perfect for: agencies, teams, production use
+
+### Getting Started (Free Forever)
+
+**Option 1: Faker Mode (Zero Setup)**
+```bash
+npm install @symulate/sdk
+```
+```typescript
+import { configureSymulate } from "@symulate/sdk";
+
+configureSymulate({
+  generateMode: "faker", // That's it! No API key needed
+});
+```
+
+**Option 2: BYOK with OpenAI**
+1. Get an OpenAI API key at [https://platform.openai.com/api-keys](https://platform.openai.com/api-keys)
+2. Install Symulate SDK:
+   ```bash
+   npm install @symulate/sdk
+   ```
+3. Configure (persistence is automatic!):
+   ```typescript
+   configureSymulate({
+     openaiApiKey: process.env.OPENAI_API_KEY,
+     generateMode: "ai",
+     // That's it! Persistence defaults to "local" automatically
+   });
+   ```
+4. Start building with AI-realistic data!
+
+**Full Example:** See [examples/byok-example.ts](./examples/byok-example.ts) for a complete working example.
+
 ## Configuration
 
 Get your free API key and project ID at [https://platform.symulate.dev](https://platform.symulate.dev)
 
 ```typescript
 configureSymulate({
-  symulateApiKey: string,         // Symulate Platform API key (sym_live_xxx) - required for AI generation
-  projectId: string,             // Project ID for multi-project isolation - required
+  // API Keys (choose one):
+  openaiApiKey: string,          // BYOK: Your OpenAI API key (sk-...) - for free open source tier
+  symulateApiKey: string,        // Symulate Platform API key (sym_live_xxx) - for managed service
+
+  // Optional:
+  projectId: string,             // Project ID for multi-project isolation (required for platform)
+  demoApiKey: string,            // Demo API key (sym_demo_xxx) - for accessing pre-generated demo data
   backendBaseUrl: string,        // Real backend URL for production
   environment: "development" | "production",
   cacheEnabled: boolean,         // Enable/disable caching (default: true)
@@ -79,6 +245,15 @@ configureSymulate({
   generateMode: "ai" | "faker" | "auto",  // Generation mode (default: "auto")
   fakerSeed: number,             // Seed for deterministic Faker.js generation (optional)
   regenerateOnConfigChange: boolean,  // Regenerate when endpoint config changes (default: true)
+
+  // Collections configuration:
+  collections: {
+    branch: string,              // Branch name for data isolation (e.g., "main", "client-acme")
+    persistence: {
+      mode: "memory" | "local" | "cloud",  // Persistence strategy
+      filePath: string,          // File path for Node.js file persistence (default: ".symulate-data.json")
+    },
+  },
 });
 ```
 
@@ -723,6 +898,8 @@ npx symulate collections delete --all  # With confirmation
 
 # Pre-generate all collections
 npx symulate collections pregenerate
+
+# Pre-generate for specific branch
 npx symulate collections pregenerate -b demo
 ```
 
@@ -888,6 +1065,155 @@ params: [
 ]
 ```
 
+### Flexible Response Schemas
+
+Customize the response structure of list operations using `responseSchema` with meta fields and aggregates.
+
+#### Default Response Structure
+
+By default, list operations return:
+
+```typescript
+{
+  data: T[],           // Paginated items
+  pagination: {
+    page: number,      // Current page
+    limit: number,     // Items per page
+    total: number,     // Total items count
+    totalPages: number // Total pages
+  }
+}
+```
+
+#### Custom Response Structure
+
+Define any response structure you want using `collectionsMeta` fields:
+
+```typescript
+const products = defineCollection({
+  name: 'products',
+  basePath: '/api/products',
+  schema: ProductSchema,
+  operations: {
+    list: {
+      responseSchema: m.object({
+        items: [ProductSchema],  // Array location for paginated data
+        currentPage: m.collectionsMeta.page(),
+        pageSize: m.collectionsMeta.limit(),
+        totalItems: m.collectionsMeta.total(),
+        totalPages: m.collectionsMeta.totalPages(),
+      }),
+    },
+  },
+});
+
+// Returns:
+// {
+//   items: Product[],
+//   currentPage: 1,
+//   pageSize: 20,
+//   totalItems: 100,
+//   totalPages: 5
+// }
+```
+
+#### Available Meta Fields
+
+**Basic Fields:**
+- `m.collectionsMeta.page()` - Current page number
+- `m.collectionsMeta.limit()` - Items per page
+- `m.collectionsMeta.total()` - Total items count
+- `m.collectionsMeta.totalPages()` - Total pages
+
+**Aggregate Fields:**
+- `m.collectionsMeta.avg("fieldName")` - Average of numeric field
+- `m.collectionsMeta.sum("fieldName")` - Sum of numeric field
+- `m.collectionsMeta.min("fieldName")` - Minimum value
+- `m.collectionsMeta.max("fieldName")` - Maximum value
+- `m.collectionsMeta.count("fieldName", value)` - Count where field equals value
+
+#### Response with Aggregates
+
+Include statistics and analytics in your response:
+
+```typescript
+const products = defineCollection({
+  name: 'products',
+  schema: ProductSchema,
+  operations: {
+    list: {
+      responseSchema: m.object({
+        products: [ProductSchema],
+        meta: m.object({
+          page: m.collectionsMeta.page(),
+          total: m.collectionsMeta.total(),
+        }),
+        stats: m.object({
+          averagePrice: m.collectionsMeta.avg("price"),
+          totalViews: m.collectionsMeta.sum("views"),
+          minPrice: m.collectionsMeta.min("price"),
+          maxPrice: m.collectionsMeta.max("price"),
+          averageRating: m.collectionsMeta.avg("rating"),
+          inStockCount: m.collectionsMeta.count("inStock", true),
+          outOfStockCount: m.collectionsMeta.count("inStock", false),
+        }),
+      }),
+    },
+  },
+});
+
+// Returns:
+// {
+//   products: [...],
+//   meta: { page: 1, total: 50 },
+//   stats: {
+//     averagePrice: 249.99,
+//     totalViews: 15420,
+//     minPrice: 29.99,
+//     maxPrice: 999.99,
+//     averageRating: 4.3,
+//     inStockCount: 42,
+//     outOfStockCount: 8
+//   }
+// }
+```
+
+#### Nested Structures
+
+Create complex nested response structures:
+
+```typescript
+responseSchema: m.object({
+  result: m.object({
+    data: [ProductSchema],
+    pagination: m.object({
+      current: m.collectionsMeta.page(),
+      total: m.collectionsMeta.totalPages(),
+    }),
+  }),
+  analytics: m.object({
+    pricing: m.object({
+      average: m.collectionsMeta.avg("price"),
+      range: m.object({
+        min: m.collectionsMeta.min("price"),
+        max: m.collectionsMeta.max("price"),
+      }),
+    }),
+    inventory: m.object({
+      available: m.collectionsMeta.count("inStock", true),
+      total: m.collectionsMeta.total(),
+    }),
+  }),
+})
+```
+
+**Key Points:**
+- Arrays `[Schema]` mark where paginated items are placed
+- Aggregates calculate over all items (before pagination)
+- Count aggregates can filter by field value
+- Structure can be arbitrarily nested
+- Works with both local and cloud persistence
+
 ### Server-Side vs Client-Side
 
 **Traditional Endpoints** (defineEndpoint):
@@ -965,6 +1291,451 @@ async function userManagement() {
   const page2 = await users.list();
   console.log(`Remaining users: ${page2.pagination.total}`);
 }
+```
+
+### Collection Metadata & Aggregates
+
+Use `m.collectionsMeta` to include pagination metadata and aggregate functions in your response schemas. These fields are automatically calculated and populated by the server.
+
+#### Pagination Metadata
+
+Include pagination information in your list operation responses:
+
+```typescript
+const ListResponseSchema = m.object({
+  data: m.array(ProductSchema),
+  pagination: m.object({
+    page: m.collectionsMeta.page(),
+    limit: m.collectionsMeta.limit(),
+    total: m.collectionsMeta.total(),
+    totalPages: m.collectionsMeta.totalPages(),
+  }),
+});
+
+export const products = defineCollection({
+  name: 'products',
+  schema: ProductSchema,
+  operations: {
+    list: {
+      responseSchema: ListResponseSchema
+    }
+  }
+});
+
+// Response automatically includes pagination metadata
+const response = await products.list({ page: 2, limit: 20 });
+console.log(response.pagination);
+// {
+//   page: 2,
+//   limit: 20,
+//   total: 150,
+//   totalPages: 8
+// }
+```
+
+#### Aggregate Functions
+
+Calculate statistics across **all items** in the collection (not just the current page):
+
+**Available Aggregates:**
+- `m.collectionsMeta.avg(fieldName)` - Average value
+- `m.collectionsMeta.sum(fieldName)` - Sum of all values
+- `m.collectionsMeta.min(fieldName)` - Minimum value
+- `m.collectionsMeta.max(fieldName)` - Maximum value
+- `m.collectionsMeta.count(fieldName, value)` - Count items matching value
+
+```typescript
+const ProductSchema = m.object({
+  id: m.uuid(),
+  name: m.string(),
+  price: m.number(),
+  category: m.string(),
+  inStock: m.boolean(),
+});
+
+const ProductStatsSchema = m.object({
+  data: m.array(ProductSchema),
+  pagination: m.object({
+    page: m.collectionsMeta.page(),
+    limit: m.collectionsMeta.limit(),
+    total: m.collectionsMeta.total(),
+    totalPages: m.collectionsMeta.totalPages(),
+  }),
+  stats: m.object({
+    averagePrice: m.collectionsMeta.avg("price"),
+    totalValue: m.collectionsMeta.sum("price"),
+    cheapest: m.collectionsMeta.min("price"),
+    mostExpensive: m.collectionsMeta.max("price"),
+    inStockCount: m.collectionsMeta.count("inStock", true),
+  }),
+});
+
+export const products = defineCollection({
+  name: 'products',
+  schema: ProductSchema,
+  seedCount: 100,
+  operations: {
+    list: {
+      responseSchema: ProductStatsSchema
+    }
+  }
+});
+
+// Aggregates calculated across ALL 100 products, not just current page
+const response = await products.list({ page: 1, limit: 10 });
+console.log(response.stats);
+// {
+//   averagePrice: 89.99,
+//   totalValue: 8999.00,
+//   cheapest: 9.99,
+//   mostExpensive: 499.99,
+//   inStockCount: 67
+// }
+```
+
+#### Advanced Example
+
+Combine metadata and aggregates for powerful analytics:
+
+```typescript
+const OrderSchema = m.object({
+  id: m.uuid(),
+  customerId: m.string(),
+  total: m.number(),
+  status: m.string("pending, processing, completed, cancelled"),
+  createdAt: m.date(),
+});
+
+const OrderAnalyticsSchema = m.object({
+  orders: m.array(OrderSchema),
+  pagination: m.object({
+    page: m.collectionsMeta.page(),
+    limit: m.collectionsMeta.limit(),
+    total: m.collectionsMeta.total(),
+    totalPages: m.collectionsMeta.totalPages(),
+  }),
+  analytics: m.object({
+    // Revenue metrics
+    totalRevenue: m.collectionsMeta.sum("total"),
+    averageOrderValue: m.collectionsMeta.avg("total"),
+    largestOrder: m.collectionsMeta.max("total"),
+
+    // Order status counts
+    completedOrders: m.collectionsMeta.count("status", "completed"),
+    pendingOrders: m.collectionsMeta.count("status", "pending"),
+    cancelledOrders: m.collectionsMeta.count("status", "cancelled"),
+  }),
+});
+
+export const orders = defineCollection({
+  name: 'orders',
+  schema: OrderSchema,
+  seedCount: 500,
+  operations: {
+    list: {
+      responseSchema: OrderAnalyticsSchema
+    }
+  }
+});
+
+// Get page 1 with complete analytics
+const dashboard = await orders.list({ page: 1, limit: 25 });
+
+console.log(`Showing ${dashboard.orders.length} of ${dashboard.pagination.total} orders`);
+console.log(`Total Revenue: $${dashboard.analytics.totalRevenue.toFixed(2)}`);
+console.log(`Average Order: $${dashboard.analytics.averageOrderValue.toFixed(2)}`);
+console.log(`Completed: ${dashboard.analytics.completedOrders}`);
+console.log(`Pending: ${dashboard.analytics.pendingOrders}`);
+```
+
+**Key Features:**
+- ✅ Aggregates calculated across **entire collection**, not just current page
+- ✅ Automatically updated when items are created/updated/deleted
+- ✅ Works with all persistence modes (memory, local, cloud)
+- ✅ Zero configuration - just add to your schema
+- ✅ Type-safe with full TypeScript inference
+
+**Common Use Cases:**
+- Dashboard statistics (total users, revenue, etc.)
+- E-commerce analytics (average price, inventory counts)
+- Reporting endpoints (aggregate data across large datasets)
+- Admin panels (totals, averages, status counts)
+
+## Tenant Demos (Pre-Generated Demo Data)
+
+**NEW:** Create isolated demo environments with pre-generated AI data for customer demos, sales presentations, and live testing without impacting development data.
+
+### Overview
+
+Tenant Demos provide a powerful way to create realistic, production-like demo environments:
+
+- ✅ **Pre-Generated Data**: AI generates all data before your demo
+- ✅ **Isolated Environments**: Each demo has its own data that never changes
+- ✅ **Custom Instructions**: AI instructions for domain-specific data
+- ✅ **Selectable Content**: Choose which collections/endpoints to generate
+- ✅ **Instant API Access**: Demo API key for immediate SDK integration
+- ✅ **Expiration Control**: Optional expiration dates for time-limited demos
+
+### Why Use Tenant Demos?
+
+**Traditional Mock Data Problems:**
+- 🔴 Data regenerates on each request (inconsistent)
+- 🔴 Uses AI tokens during live demos
+- 🔴 Latency from real-time generation
+- 🔴 Same data for all customers/demos
+
+**Tenant Demos Solution:**
+- ✅ Pre-generated, consistent data
+- ✅ Zero AI tokens during demos
+- ✅ Instant response times
+- ✅ Custom data per customer/demo
+- ✅ Production-realistic experience
+
+### Creating a Demo
+
+1. **Create Demo in Platform UI**
+   - Navigate to Dashboard → Demos
+   - Click "Create Demo"
+   - Enter name (e.g., "Acme Corp Demo", "Q1 Sales Presentation")
+   - Optional: Set expiration date
+
+2. **Configure Data Generation**
+   ```
+   General Instruction (applies to all):
+   "Generate data for a Berlin-based e-commerce company selling electronics"
+
+   Collections:
+   ☑ products (Custom: "Focus on laptops and smartphones")
+   ☑ users (Custom: "B2B customers in automotive industry")
+
+   Endpoints:
+   ☑ GET /api/stats (Custom: "Show 25% year-over-year growth")
+   ☑ GET /api/dashboard (Custom: "Premium tier analytics")
+   ```
+
+3. **Generate Data**
+   - Click "Generate Data"
+   - AI processes all selections in background
+   - Receive email when complete
+   - View progress in Jobs tab
+
+4. **Get Demo API Key**
+   - Click "View API Key" on your demo
+   - Copy key (format: `sym_demo_xxx`)
+   - Key never expires unless demo is deleted
+
+### Using Demo Data in Your App
+
+```typescript
+import { configureSymulate } from '@symulate/sdk';
+
+// Configure SDK with demo API key
+configureSymulate({
+  demoApiKey: 'sym_demo_your_key_here', // Routes ALL calls to pre-generated data
+  projectId: 'proj_xxx',
+  backendBaseUrl: "https://api.myapp.com", // Not used when demoApiKey is set
+});
+
+// All endpoint and collection calls now use pre-generated demo data
+const products = await getProducts();       // ✓ Pre-generated products
+const users = await userCollection.list();  // ✓ Pre-generated users
+const stats = await getStats();            // ✓ Pre-generated stats
+
+// CRUD operations on collections still work!
+const newProduct = await productCollection.create({ name: "New Item" });
+// Creates in demo data (isolated from other demos)
+```
+
+### Demo API Key Behavior
+
+When `demoApiKey` is configured:
+- **Collections**: All CRUD operations use demo data
+  - `list()` - Returns pre-generated items
+  - `get()` - Fetches from demo data
+  - `create()` - Adds to demo data
+  - `update()` - Modifies demo data
+  - `delete()` - Removes from demo data
+
+- **Regular Endpoints**: All calls return pre-generated responses
+  - No real-time AI generation
+  - No network calls to backend
+  - Instant responses
+
+### Use Cases
+
+**1. Customer Demos**
+```typescript
+// Demo for automotive client
+configureSymulate({
+  demoApiKey: 'sym_demo_automotive_xyz',
+});
+// Shows automotive-specific data with custom branding
+```
+
+**2. Sales Presentations**
+```typescript
+// Different data for each prospect
+// Demo A: E-commerce retailer
+configureSymulate({ demoApiKey: 'sym_demo_retailer_abc' });
+
+// Demo B: Healthcare provider
+configureSymulate({ demoApiKey: 'sym_demo_healthcare_def' });
+```
+
+**3. Trade Shows**
+```typescript
+// Pre-loaded demo that works without internet
+configureSymulate({
+  demoApiKey: 'sym_demo_tradeshow_2024',
+  // All data pre-generated, works offline
+});
+```
+
+**4. Onboarding & Training**
+```typescript
+// Safe environment for new users to practice
+configureSymulate({
+  demoApiKey: 'sym_demo_training_env',
+  // Users can create/edit/delete without affecting real data
+});
+```
+
+### Custom Instructions
+
+**General Instruction** (applies to all data):
+```
+"Generate data for a Berlin-based company in the automotive industry"
+```
+
+**Collection-Specific Instructions**:
+```
+Products: "Focus on car parts and accessories"
+Users: "B2B customers, primarily German automotive manufacturers"
+```
+
+**Endpoint-Specific Instructions**:
+```
+GET /api/dashboard: "Show strong Q4 performance with 30% growth"
+GET /api/stats: "Display metrics for 500+ active customers"
+```
+
+### Re-Triggering Generation
+
+Need fresh data? Re-trigger generation from the Platform UI:
+1. Go to Dashboard → Demos → Jobs tab
+2. Find your completed job
+3. Click the refresh icon
+4. New data is generated with same configuration
+
+### Best Practices
+
+**1. Descriptive Names**
+```typescript
+// Good
+"Acme Corp Demo - Q1 2024"
+"Healthcare Client Presentation - Dr. Smith"
+
+// Avoid
+"Demo 1"
+"Test"
+```
+
+**2. Industry-Specific Instructions**
+```typescript
+// Good - Very specific
+"Generate healthcare data compliant with HIPAA.
+ Focus on patient records for cardiology department.
+ Use realistic German names and Berlin addresses."
+
+// Avoid - Too vague
+"Generate some healthcare data"
+```
+
+**3. Demo Lifecycle Management**
+```typescript
+// Set expiration for temporary demos
+Expiration: 2024-03-31 (demo for Q1 event)
+
+// No expiration for permanent environments
+Expiration: None (ongoing training environment)
+```
+
+**4. Multiple Demos for Different Audiences**
+```
+- demo-enterprise-clients (B2B features highlighted)
+- demo-small-business (SMB-focused features)
+- demo-internal-training (all features, test data)
+```
+
+### Limitations
+
+- **Static after generation**: Data doesn't update unless you re-trigger
+- **No real backend**: Mutations only affect demo data, not production
+- **No validation**: Pre-generated data bypasses real API validation
+- **Token usage**: Uses AI tokens during generation (but not during demos)
+
+### Complete Example
+
+```typescript
+// 1. Create demo in platform UI
+// Name: "Acme Corp Demo"
+// General: "Fortune 500 manufacturing company in Detroit"
+// Collections: products ✓, users ✓, orders ✓
+// Endpoints: GET /api/dashboard ✓
+
+// 2. Generate data (background job)
+// 3. Copy demo API key: sym_demo_acme_xyz
+
+// 4. Configure your app
+import { configureSymulate, defineEndpoint, defineCollection, m } from '@symulate/sdk';
+
+configureSymulate({
+  demoApiKey: 'sym_demo_acme_xyz',
+  projectId: 'proj_abc',
+});
+
+// Define your endpoints/collections as normal
+const products = defineCollection({
+  name: 'products',
+  basePath: '/api/products',
+  schema: m.object({
+    id: m.uuid(),
+    name: m.string(),
+    price: m.number(),
+  }),
+});
+
+const getDashboard = defineEndpoint({
+  path: '/api/dashboard',
+  method: 'GET',
+  schema: m.object({
+    revenue: m.number(),
+    customers: m.number(),
+    growth: m.number(),
+  }),
+});
+
+// 5. Use in your app - all data is pre-generated
+async function runDemo() {
+  // Returns pre-generated products for Acme Corp
+  const { data } = await products.list();
+  console.log(`Showing ${data.length} products for demo`);
+
+  // Returns pre-generated dashboard showing strong performance
+  const dashboard = await getDashboard();
+  console.log(`Revenue: $${dashboard.revenue.toLocaleString()}`);
+  console.log(`Growth: ${dashboard.growth}%`);
+
+  // CRUD operations work on demo data
+  const newProduct = await products.create({
+    name: "Custom Demo Product",
+    price: 99.99
+  });
+
+  console.log(`Created: ${newProduct.name}`);
+}
+
+runDemo();
 ```
 
 ### Runtime Metadata
@@ -1845,6 +2616,8 @@ npx symulate collections pregenerate -b demo
 
 **`collections pregenerate`**
 - `-b, --branch <name>` - Target branch (default: main)
+
+**Note:** Custom instructions for data generation are only available for tenant demos (created via Platform UI). Development pre-generation uses the `seedInstruction` defined in your collection schemas
 
 **Example output (list):**
 ```

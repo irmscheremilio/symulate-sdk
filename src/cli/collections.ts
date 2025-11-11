@@ -211,16 +211,13 @@ export async function pregenerateCollections(options: {
 }): Promise<void> {
   const { accessToken, projectId, branch = 'main' } = options;
 
-  // First, get the project's API keys
-  const { getConfig } = await import('../config');
-  const config = getConfig();
-  const apiKey = config.symulateApiKey;
+  // Get current organization from context
+  const { getCurrentContext } = await import('../auth');
+  const { orgId } = getCurrentContext();
 
-  if (!apiKey) {
-    console.error('\n❌ No API key configured.');
-    console.error('   Add your API key to symulate.config.js or .env:');
-    console.error('   SYMULATE_API_KEY=sym_live_xxx');
-    console.error('\n   Get your API key from https://platform.symulate.dev');
+  if (!orgId) {
+    console.error('\n❌ No organization selected.');
+    console.error('   Run "npx symulate organizations list" and "npx symulate organizations use <org-id>" to select an organization.');
     process.exit(1);
   }
 
@@ -228,69 +225,141 @@ export async function pregenerateCollections(options: {
   console.log(`   Project: ${projectId}`);
   console.log(`   Branch: ${branch}`);
 
-  // Load collections from code
-  console.log('\n   Loading collection definitions from code...');
+  // Fetch collection schemas from platform (only for selected project)
+  console.log('\n   Fetching collection schemas from platform...');
 
-  const { loadEndpoints } = await import('../loadEndpoints');
-  await loadEndpoints();
+  const supabase = getSupabaseClient(accessToken);
 
-  const { exportCollectionsArray } = await import('../collectionRegistry');
-  const collections = exportCollectionsArray();
+  const { data: schemas, error: schemasError } = await supabase
+    .from('collection_schemas')
+    .select('*')
+    .eq('project_id', projectId);
 
-  if (collections.length === 0) {
-    console.log('\n   ⚠️  No collections found in your code.');
-    console.log('   Make sure you have defined collections using defineCollection()');
+  if (schemasError) {
+    console.error('\n❌ Failed to fetch collection schemas:', schemasError.message);
     process.exit(1);
   }
 
-  console.log(`\n   Found ${collections.length} collection(s) to generate:\n`);
-  collections.forEach((col) => {
-    console.log(`     • ${col.name}`);
-  });
-
-  console.log('\n   Generating data via edge function...\n');
-
-  const { PLATFORM_CONFIG } = require('../platformConfig');
-  const { schemaToTypeDescription } = await import('../schema');
-
-  for (const collection of collections) {
-    try {
-      console.log(`     Generating "${collection.name}"...`);
-
-      const entitySchema = schemaToTypeDescription(collection.schema);
-
-      // Call edge function to generate collection data
-      const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-mockend-api-key': apiKey,
-          'x-mockend-project-id': projectId,
-          'x-symulate-stateful-operation': 'list'
-        },
-        body: JSON.stringify({
-          collectionName: collection.name,
-          operation: 'list',
-          entitySchema,
-          instruction: collection.config.seedInstruction,
-          branch,
-          page: 1,
-          limit: collection.config.seedCount || 20
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result: any = await response.json();
-      const itemCount = result.data?.length || result.pagination?.total || 0;
-
-      console.log(`       ✅ Generated ${itemCount} items`);
-    } catch (error: any) {
-      console.error(`       ❌ Error: ${error.message}`);
-    }
+  if (!schemas || schemas.length === 0) {
+    console.log('\n   ⚠️  No collection schemas found for this project.');
+    console.log('   Run "npx symulate sync" to sync your collection definitions first.');
+    process.exit(1);
   }
 
-  console.log('\n   ✅ Pre-generation complete!\n');
+  console.log(`\n   Found ${schemas.length} collection(s) to generate:\n`);
+  schemas.forEach((schema) => {
+    console.log(`     • ${schema.name}`);
+  });
+
+  // Get user info for job creation
+  const { data: { user } } = await supabase.auth.getUser(accessToken);
+
+  if (!user) {
+    console.error('\n❌ Failed to get user info');
+    process.exit(1);
+  }
+
+  // Create generation job
+  console.log('\n   Creating generation job...');
+
+  const { data: job, error: jobError } = await supabase
+    .from('collection_generation_jobs')
+    .insert({
+      organization_id: orgId,
+      project_id: projectId,
+      created_by_user_id: user.id,
+      collection_names: schemas.map((s: any) => s.name),
+      branch,
+      custom_instruction: null, // Always null for development workflow
+      notify_emails: [user.email] // Notify job creator
+    })
+    .select()
+    .single();
+
+  if (jobError || !job) {
+    console.error('\n❌ Failed to create job:', jobError?.message);
+    process.exit(1);
+  }
+
+  console.log(`   Job created: ${job.id}`);
+  console.log('\n   Starting generation...\n');
+
+  const { PLATFORM_CONFIG } = require('../platformConfig');
+
+  // Trigger job processing (fire and forget)
+  fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/process-generation-job`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${accessToken}`
+    },
+    body: JSON.stringify({ jobId: job.id })
+  }).catch(() => {
+    // Ignore errors - job will be picked up later if this fails
+  });
+
+  // Poll for progress
+  let lastProgress = 0;
+  const pollInterval = setInterval(async () => {
+    const { data: updatedJob } = await supabase
+      .from('collection_generation_jobs')
+      .select('*')
+      .eq('id', job.id)
+      .single();
+
+    if (!updatedJob) return;
+
+    const progress = updatedJob.progress as any;
+
+    // Show progress updates
+    if (progress.current > lastProgress) {
+      const completed = progress.completed as string[];
+      const failed = progress.failed as any[];
+
+      // Show newly completed
+      for (let i = lastProgress; i < progress.current; i++) {
+        if (i < completed.length) {
+          console.log(`     ✅ ${completed[i]}`);
+        }
+      }
+
+      // Show failed
+      failed.forEach((f: any) => {
+        console.log(`     ❌ ${f.name}: ${f.error}`);
+      });
+
+      lastProgress = progress.current;
+    }
+
+    // Check if complete
+    if (updatedJob.status === 'completed' || updatedJob.status === 'failed') {
+      clearInterval(pollInterval);
+
+      console.log('\n   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+      if (updatedJob.status === 'completed') {
+        console.log(`   ✅ Generation complete!`);
+        console.log(`   Generated ${progress.completed.length} collection(s)`);
+      } else {
+        console.log(`   ⚠️  Generation completed with errors`);
+        console.log(`   Successful: ${progress.completed.length}`);
+        console.log(`   Failed: ${progress.failed.length}`);
+      }
+
+      if (updatedJob.notify_emails && updatedJob.notify_emails.length > 0) {
+        console.log(`\n   📧 Email notification sent to: ${updatedJob.notify_emails.join(', ')}`);
+      }
+
+      console.log('   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+    }
+  }, 2000); // Poll every 2 seconds
+
+  // Wait up to 5 minutes, then exit (job continues in background)
+  setTimeout(() => {
+    clearInterval(pollInterval);
+    console.log('\n   ⏱️  Job is taking longer than expected...');
+    console.log(`   Job continues in background. Check status at:`);
+    console.log(`   https://platform.symulate.dev/dashboard/collections\n`);
+    process.exit(0);
+  }, 300000); // 5 minutes
 }

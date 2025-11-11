@@ -95,6 +95,12 @@ export type ValidatedEndpointConfig<T, Path extends string = string, Params exte
 export interface MockendConfig {
   // Mockend Platform API key (sym_live_xxx) - get yours at https://platform.symulate.dev
   symulateApiKey?: string;
+  // Demo API key (sym_demo_xxx) - use this to access demo data instead of development data
+  // When set, all collection operations route to the demo edge function
+  demoApiKey?: string;
+  // OpenAI API key for BYOK (Bring Your Own Key) mode - allows using Symulate SDK without platform account
+  // When set, AI generation uses your OpenAI key directly instead of Symulate platform
+  openaiApiKey?: string;
   // Project ID for multi-project isolation (get from https://platform.symulate.dev)
   projectId?: string;
   // If environment is production, Symulate will send endpoint requests here.

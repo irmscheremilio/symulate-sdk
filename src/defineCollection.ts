@@ -31,41 +31,29 @@ async function checkAndThrowError(errors: ErrorConfig[] | undefined, input: any,
 
 /**
  * Throw error with generated response
+ * Supports both BYOK (OpenAI) and Platform API modes
  */
 async function throwGeneratedError(errorConfig: ErrorConfig, input: any, path: string, method: string): Promise<never> {
   console.log(`[Symulate] ⚠️ Simulating error response (${errorConfig.code})`);
 
-  const globalConfig = getConfig();
   let errorResponse: any;
 
   // Generate realistic error response if schema is provided
   if (errorConfig.schema) {
     try {
-      // Call Symulate edge function to generate error response (non-stateful)
+      // Use AI provider (supports both BYOK and Platform modes)
+      const { generateWithAI } = await import('./aiProvider');
       const typeDescription = schemaToTypeDescription(errorConfig.schema);
 
-      const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-mockend-api-key': globalConfig.symulateApiKey || '',
-          'x-mockend-project-id': globalConfig.projectId || ''
-        },
-        body: JSON.stringify({
-          schema: typeDescription,
-          instruction: errorConfig.description || `Generate error response for HTTP ${errorConfig.code}`,
-          count: 1,
-        })
+      const result = await generateWithAI({
+        schema: errorConfig.schema,
+        instruction: errorConfig.description || `Generate a realistic error response for HTTP ${errorConfig.code}`,
+        typeDescription,
       });
 
-      if (!response.ok) {
-        throw new Error(`Edge function error: ${response.statusText}`);
-      }
-
-      const result: any = await response.json();
-      errorResponse = result.data?.[0] || result.data || result;
+      errorResponse = result;
     } catch (err) {
-      console.warn('[Symulate] Failed to generate error response via edge function:', err);
+      console.warn('[Symulate] Failed to generate error response with AI:', err);
       // Fallback to simple error if generation fails
       errorResponse = {
         error: errorConfig.description || 'Operation failed',
@@ -178,6 +166,11 @@ export function defineCollection<T extends Record<string, any>>(
   // Normalize configuration
   const normalizedConfig = normalizeConfig(config);
 
+  // Validate persistence mode configuration
+  const globalConfig = getConfig();
+  const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
+  validatePersistenceMode(persistenceMode);
+
   // Create DataStore
   const store = new DataStore<T>({
     collectionName: normalizedConfig.name,
@@ -222,7 +215,7 @@ export function defineCollection<T extends Record<string, any>>(
 
   // Conditionally add CRUD methods based on enabled operations
   if (enabledOps.list) {
-    collection.list = async function(options?: QueryOptions): Promise<PaginatedResponse<T>> {
+    collection.list = async function(options?: QueryOptions): Promise<any> {
       if (!isDevelopment()) {
         // Production: call real backend
         return await callBackendList(normalizedConfig, basePath, options);
@@ -232,13 +225,19 @@ export function defineCollection<T extends Record<string, any>>(
       const operationConfig = getOperationConfig(normalizedConfig, 'list');
       await checkAndThrowError(operationConfig?.errors, options, basePath, 'GET');
 
+      // Simulate loading delay if configured
+      await applyDelay(operationConfig?.mock?.delay);
+
+      // Extract response schema if defined
+      const responseSchema = operationConfig?.responseSchema;
+
       // Check persistence mode
       const globalConfig = getConfig();
-      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+      const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
-        // Use local DataStore
-        return await store.query(options);
+        // Use local DataStore with optional response schema
+        return await store.query(options, responseSchema);
       } else {
         // Use edge function for server-side persistence
         return await callStatefulList(normalizedConfig, options);
@@ -256,9 +255,12 @@ export function defineCollection<T extends Record<string, any>>(
       const operationConfig = getOperationConfig(normalizedConfig, 'get');
       await checkAndThrowError(operationConfig?.errors, { id }, `${basePath}/${id}`, 'GET');
 
+      // Simulate loading delay if configured
+      await applyDelay(operationConfig?.mock?.delay);
+
       // Check persistence mode
       const globalConfig = getConfig();
-      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+      const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
         // Use local DataStore
@@ -284,6 +286,9 @@ export function defineCollection<T extends Record<string, any>>(
       const operationConfig = getOperationConfig(normalizedConfig, 'create');
       await checkAndThrowError(operationConfig?.errors, data, basePath, 'POST');
 
+      // Simulate loading delay if configured
+      await applyDelay(operationConfig?.mock?.delay);
+
       // Run hooks if defined
       let processedData = data as any;
       if (normalizedConfig.hooks?.beforeCreate) {
@@ -292,7 +297,7 @@ export function defineCollection<T extends Record<string, any>>(
 
       // Check persistence mode
       const globalConfig = getConfig();
-      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+      const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
       let created: T;
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
@@ -321,6 +326,9 @@ export function defineCollection<T extends Record<string, any>>(
       const operationConfig = getOperationConfig(normalizedConfig, 'update');
       await checkAndThrowError(operationConfig?.errors, { id, ...data }, `${basePath}/${id}`, 'PATCH');
 
+      // Simulate loading delay if configured
+      await applyDelay(operationConfig?.mock?.delay);
+
       let processedData = data;
       if (normalizedConfig.hooks?.beforeUpdate) {
         processedData = await normalizedConfig.hooks.beforeUpdate(id, data);
@@ -328,7 +336,7 @@ export function defineCollection<T extends Record<string, any>>(
 
       // Check persistence mode
       const globalConfig = getConfig();
-      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+      const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
       let updated: T;
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
@@ -361,9 +369,12 @@ export function defineCollection<T extends Record<string, any>>(
       const operationConfig = getOperationConfig(normalizedConfig, 'replace');
       await checkAndThrowError(operationConfig?.errors, { id, ...data }, `${basePath}/${id}`, 'PUT');
 
+      // Simulate loading delay if configured
+      await applyDelay(operationConfig?.mock?.delay);
+
       // Check persistence mode
       const globalConfig = getConfig();
-      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+      const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
       let replaced: T;
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
@@ -390,7 +401,7 @@ export function defineCollection<T extends Record<string, any>>(
 
       // Check persistence mode
       const globalConfig = getConfig();
-      const persistenceMode = globalConfig.collections?.persistence?.mode || 'cloud';
+      const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
       // Get item for error check (use appropriate method based on persistence mode)
       let item: T | null;
@@ -403,6 +414,9 @@ export function defineCollection<T extends Record<string, any>>(
       // Check for error conditions
       const operationConfig = getOperationConfig(normalizedConfig, 'delete');
       await checkAndThrowError(operationConfig?.errors, item, `${basePath}/${id}`, 'DELETE');
+
+      // Simulate loading delay if configured
+      await applyDelay(operationConfig?.mock?.delay);
 
       if (normalizedConfig.hooks?.beforeDelete) {
         await normalizedConfig.hooks.beforeDelete(id);
@@ -466,7 +480,7 @@ export function defineCollection<T extends Record<string, any>>(
 /**
  * Normalize collection config with defaults
  */
-function normalizeConfig<T>(config: CollectionConfig<T>): Required<CollectionConfig<T>> {
+function normalizeConfig<T>(config: CollectionConfig<T>): Omit<Required<CollectionConfig<T>>, 'autoGenerate'> & Pick<CollectionConfig<T>, 'autoGenerate'> {
   return {
     name: config.name,
     schema: config.schema,
@@ -477,6 +491,7 @@ function normalizeConfig<T>(config: CollectionConfig<T>): Required<CollectionCon
     relations: config.relations || {},
     plural: config.plural || pluralize(config.name),
     hooks: config.hooks || {},
+    autoGenerate: config.autoGenerate,
   };
 }
 
@@ -523,6 +538,54 @@ function isOperationEnabled(config: boolean | any): boolean {
     return config.enabled !== false;
   }
   return true;
+}
+
+/**
+ * Apply delay simulation if configured
+ */
+async function applyDelay(delay?: number): Promise<void> {
+  if (delay && delay > 0) {
+    console.log(`[Symulate] ⏱ Simulating ${delay}ms loading delay...`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+}
+
+/**
+ * Get default persistence mode based on API key configuration
+ * BYOK (openaiApiKey only) defaults to 'local'
+ * Platform (symulateApiKey or demoApiKey) defaults to 'cloud'
+ */
+function getDefaultPersistenceMode(): 'local' | 'cloud' {
+  const globalConfig = getConfig();
+
+  // If using BYOK (only openaiApiKey, no platform keys)
+  if (globalConfig.openaiApiKey && !globalConfig.symulateApiKey && !globalConfig.demoApiKey) {
+    console.log('[Symulate] BYOK mode detected - using local persistence by default');
+    return 'local';
+  }
+
+  // Default to cloud for platform users
+  return 'cloud';
+}
+
+/**
+ * Validate persistence mode configuration
+ */
+function validatePersistenceMode(mode: string): void {
+  const globalConfig = getConfig();
+
+  // Warn if trying to use cloud persistence with BYOK only
+  if (mode === 'cloud' && globalConfig.openaiApiKey && !globalConfig.symulateApiKey && !globalConfig.demoApiKey) {
+    console.warn(
+      '[Symulate] WARNING: Cloud persistence requires Symulate Platform API key.\n' +
+      'You are using BYOK mode (openaiApiKey only).\n' +
+      'Please use local persistence instead:\n\n' +
+      '  configureSymulate({\n' +
+      '    openaiApiKey: "...",\n' +
+      '    collections: { persistence: { mode: "local" } }\n' +
+      '  })\n'
+    );
+  }
 }
 
 /**
@@ -712,6 +775,41 @@ async function callBackendRelation(basePath: string, parentId: string, relationN
 }
 
 /**
+ * Get edge function URL based on config (demo vs regular)
+ */
+function getStatefulEdgeFunctionUrl(): string {
+  const globalConfig = getConfig();
+  if (globalConfig.demoApiKey) {
+    return `${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate-demo`;
+  }
+  return `${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`;
+}
+
+/**
+ * Get headers for stateful operations based on config
+ */
+function getStatefulHeaders(operation: string): Record<string, string> {
+  const globalConfig = getConfig();
+
+  if (globalConfig.demoApiKey) {
+    // Demo mode - use demo API key
+    return {
+      'Content-Type': 'application/json',
+      'x-symulate-demo-key': globalConfig.demoApiKey,
+      'x-symulate-stateful-operation': operation
+    };
+  }
+
+  // Regular mode - use standard API keys
+  return {
+    'Content-Type': 'application/json',
+    'x-mockend-api-key': globalConfig.symulateApiKey || '',
+    'x-mockend-project-id': globalConfig.projectId || '',
+    'x-symulate-stateful-operation': operation
+  };
+}
+
+/**
  * Call edge function for stateful list operation
  */
 async function callStatefulList<T>(collectionConfig: any, options?: QueryOptions): Promise<PaginatedResponse<T>> {
@@ -723,14 +821,14 @@ async function callStatefulList<T>(collectionConfig: any, options?: QueryOptions
   const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
   const branch = globalConfig.collections?.branch || 'main';
 
-  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+  const url = getStatefulEdgeFunctionUrl();
+  const headers = getStatefulHeaders('list');
+
+  console.log('[callStatefulList] URL:', url, 'demoApiKey:', globalConfig.demoApiKey ? 'SET' : 'NOT SET');
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-mockend-api-key': globalConfig.symulateApiKey || '',
-      'x-mockend-project-id': globalConfig.projectId || '',
-      'x-symulate-stateful-operation': 'list'
-    },
+    headers,
     body: JSON.stringify({
       collectionName: collectionConfig.name,
       operation: 'list',
@@ -788,14 +886,12 @@ async function callStatefulCreate<T>(collectionConfig: any, data: any): Promise<
   const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
   const branch = globalConfig.collections?.branch || 'main';
 
-  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+  const url = getStatefulEdgeFunctionUrl();
+  const headers = getStatefulHeaders('create');
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-mockend-api-key': globalConfig.symulateApiKey || '',
-      'x-mockend-project-id': globalConfig.projectId || '',
-      'x-symulate-stateful-operation': 'create'
-    },
+    headers,
     body: JSON.stringify({
       collectionName: collectionConfig.name,
       operation: 'create',
@@ -826,14 +922,12 @@ async function callStatefulUpdate<T>(collectionConfig: any, id: string, data: an
   const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
   const branch = globalConfig.collections?.branch || 'main';
 
-  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+  const url = getStatefulEdgeFunctionUrl();
+  const headers = getStatefulHeaders('update');
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-mockend-api-key': globalConfig.symulateApiKey || '',
-      'x-mockend-project-id': globalConfig.projectId || '',
-      'x-symulate-stateful-operation': 'update'
-    },
+    headers,
     body: JSON.stringify({
       collectionName: collectionConfig.name,
       operation: 'update',
@@ -865,14 +959,12 @@ async function callStatefulDelete(collectionConfig: any, id: string): Promise<vo
   const responseSchema = operationConfig?.responseSchema ? schemaToTypeDescription(operationConfig.responseSchema) : undefined;
   const branch = globalConfig.collections?.branch || 'main';
 
-  const response = await fetch(`${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`, {
+  const url = getStatefulEdgeFunctionUrl();
+  const headers = getStatefulHeaders('delete');
+
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-mockend-api-key': globalConfig.symulateApiKey || '',
-      'x-mockend-project-id': globalConfig.projectId || '',
-      'x-symulate-stateful-operation': 'delete'
-    },
+    headers,
     body: JSON.stringify({
       collectionName: collectionConfig.name,
       operation: 'delete',

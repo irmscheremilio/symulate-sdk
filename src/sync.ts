@@ -94,6 +94,7 @@ export async function syncEndpoints(): Promise<void> {
         errors: operationConfig?.errors,
         mock: operationConfig?.mock,
         mode: operationConfig?.mode,
+        __filename: `${collection.name}.collection`, // Mark as collection endpoint
         // params already includes role-based parameter configuration
       } as any);
     });
@@ -327,7 +328,19 @@ export async function syncEndpoints(): Promise<void> {
       params: config.params, // Includes role-based parameter configuration
       errors: config.errors,
       filename: (config as any).__filename || 'unknown',
+      is_collection: false, // Regular endpoints are not collections
     }));
+
+  // Prepare collection schemas for syncing
+  const collectionsToSync = collections.map(collection => ({
+    name: collection.name,
+    schema: serializeSchema(collection.schema),
+    basePath: collection.basePath,
+    seedCount: collection.config.seedCount || 10,
+    seedInstruction: collection.config.seedInstruction || '',
+    operations: collection.operations,
+    autoGenerate: collection.config.autoGenerate,
+  }));
 
   // 7. Sync to backend
   console.log('[Symulate] 📤 Syncing to backend...');
@@ -344,6 +357,7 @@ export async function syncEndpoints(): Promise<void> {
         body: JSON.stringify({
           project_id: projectId,
           endpoints: endpointsToSync,
+          collections: collectionsToSync,
           delete_endpoint_ids: endpointsToDelete,
         }),
       }
@@ -356,6 +370,7 @@ export async function syncEndpoints(): Promise<void> {
 
     const result = await response.json();
     const results: SyncResult[] = result.results || [];
+    const collectionsCount = result.collections_synced || 0;
 
     console.log('[Symulate] ✅ Sync completed successfully!\n');
 
@@ -373,7 +388,11 @@ export async function syncEndpoints(): Promise<void> {
       updated.forEach(r => console.log(`  ✓ ${r.method} ${r.path}`));
     }
 
-    console.log('\n[Symulate] 💡 View your endpoints at https://platform.symulate.dev\n');
+    if (collectionsCount > 0) {
+      console.log(`\n[Symulate] Synced ${collectionsCount} collection schema(s)`);
+    }
+
+    console.log('\n[Symulate] 💡 View your endpoints and collections at https://platform.symulate.dev\n');
   } catch (error) {
     console.error('[Symulate] Failed to sync endpoints:', error);
     throw error;
@@ -383,12 +402,110 @@ export async function syncEndpoints(): Promise<void> {
 /**
  * Serialize schema for storage
  * Converts schema object to a JSON-serializable format
+ * Maps semantic types (e.g., "lorem.sentence", "collectionsMeta.page") to JSON types
+ * and prefixes descriptions with the semantic type
  */
 function serializeSchema(schema: any): any {
-  // For now, just return the schema as-is
-  // In the future, we might need more sophisticated serialization
-  // to handle complex schema types
-  return schema;
+  if (!schema || typeof schema !== 'object') {
+    return schema;
+  }
+
+  // Handle arrays in schema
+  if (Array.isArray(schema)) {
+    return schema.map(item => serializeSchema(item));
+  }
+
+  // Handle BaseSchema objects with _meta
+  if (schema._meta) {
+    const schemaType = schema._meta.schemaType;
+    const description = schema._meta.description;
+    const dbReference = schema._meta.dbReference;
+    const dataType = schema._meta.dataType;
+
+    // Use dataType override if provided, otherwise map from schemaType
+    const jsonType = dataType || mapSchemaTypeToJsonType(schemaType);
+
+    // Get semantic type if it's not a basic JSON type
+    const semanticTypePrefix = getSemanticTypePrefix(schemaType);
+
+    // Preserve original structure but add JSON type and semantic type as separate fields
+    const result: any = {
+      ...schema,
+      _meta: {
+        ...schema._meta,
+        type: jsonType, // JSON type (either from dataType override or mapped from schemaType)
+        semanticType: semanticTypePrefix || undefined, // Semantic type as separate field
+        description: description, // Keep original description
+      }
+    };
+
+    // Handle object schemas - recurse into _shape
+    if (schemaType === 'object' && schema._shape) {
+      result._shape = {};
+      for (const [key, value] of Object.entries(schema._shape)) {
+        result._shape[key] = serializeSchema(value);
+      }
+    }
+
+    // Handle array schemas - recurse into _element
+    if (schemaType === 'array' && schema._element) {
+      result._element = serializeSchema(schema._element);
+    }
+
+    return result;
+  }
+
+  // Handle plain objects (nested schemas without _meta)
+  const result: any = {};
+  for (const [key, value] of Object.entries(schema)) {
+    result[key] = serializeSchema(value);
+  }
+  return result;
+}
+
+/**
+ * Map schema type to JSON type
+ */
+function mapSchemaTypeToJsonType(schemaType: string): string {
+  // Object and array types
+  if (schemaType === 'object') return 'object';
+  if (schemaType === 'array') return 'array';
+
+  // Boolean type
+  if (schemaType === 'boolean') return 'boolean';
+
+  // Number types
+  const numberTypes = [
+    'number',
+    'commerce.price',
+    'collectionsMeta.page',
+    'collectionsMeta.limit',
+    'collectionsMeta.total',
+    'collectionsMeta.totalPages',
+  ];
+
+  // Also check for dynamic collectionsMeta types (avg, sum, min, max, count)
+  if (numberTypes.includes(schemaType) || schemaType.startsWith('collectionsMeta.')) {
+    return 'number';
+  }
+
+  // All other types are strings
+  return 'string';
+}
+
+/**
+ * Get semantic type prefix for description
+ * Returns the semantic type if it's not a basic JSON type
+ */
+function getSemanticTypePrefix(schemaType: string): string | null {
+  // Don't prefix basic JSON types
+  const basicTypes = ['string', 'number', 'boolean', 'object', 'array'];
+  if (basicTypes.includes(schemaType)) {
+    return null;
+  }
+
+  // Return the semantic type for all other types
+  return schemaType;
 }
 
 /**

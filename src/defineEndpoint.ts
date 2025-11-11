@@ -109,6 +109,13 @@ export function defineEndpoint<T>(
   }
 
   return async (params?: Record<string, any>): Promise<T> => {
+    const globalConfig = getConfig();
+
+    // Check if demo API key is configured - if so, route to demo edge function
+    if (globalConfig.demoApiKey) {
+      return callDemoEndpoint<T>(config, params, globalConfig.demoApiKey);
+    }
+
     // Extract runtime metadata from params (if provided) before validation
     const runtimeMetadata = params?.metadata as Record<string, any> | undefined;
 
@@ -238,16 +245,27 @@ export async function generateMockData<T>(
   // Check for error conditions (failNow and failIf)
   await checkAndThrowError(config.errors, params, config.path, config.method, config);
 
-  // API key is required for all modes (even Faker mode for user tracking and quota management)
-  if (!globalConfig.symulateApiKey) {
+  const generateMode = globalConfig.generateMode || "auto";
+
+  // Validate API key based on mode
+  // Faker mode: No API key required (fully open source)
+  // AI mode: Require either openaiApiKey (BYOK) OR symulateApiKey (platform)
+  // Auto mode: Either API key OR will fall back to Faker
+  if (generateMode === "ai" && !globalConfig.openaiApiKey && !globalConfig.symulateApiKey) {
     throw new Error(
-      `[Symulate] API key required for all generation modes (including Faker). ` +
-      `Get your free API key at https://platform.symulate.dev\n\n` +
-      `Free tier includes:\n` +
-      `  • Unlimited Faker.js mode (CI/CD)\n` +
-      `  • 100 AI calls/month (try realistic data)\n\n` +
-      `Add to your config:\n` +
-      `configureSymulate({ symulateApiKey: "sym_live_xxx" })`
+      `[Symulate] AI mode requires an API key.\n\n` +
+      `Option 1 - BYOK (Bring Your Own Key, fully open source):\n` +
+      `  configureSymulate({\n` +
+      `    openaiApiKey: process.env.OPENAI_API_KEY,\n` +
+      `    generateMode: "ai"\n` +
+      `  })\n\n` +
+      `Option 2 - Symulate Platform (with free tier):\n` +
+      `  Get free API key at https://platform.symulate.dev\n` +
+      `  • 100 AI calls/month free\n` +
+      `  • Cloud persistence\n` +
+      `  configureSymulate({ symulateApiKey: "sym_live_xxx" })\n\n` +
+      `Option 3 - Use Faker mode (no API key needed):\n` +
+      `  configureSymulate({ generateMode: "faker" })`
     );
   }
 
@@ -260,7 +278,6 @@ export async function generateMockData<T>(
   }
 
   const count = config.mock?.count || 1;
-  const generateMode = globalConfig.generateMode || "auto";
 
   // Interpolate variables in instruction if params provided
   const instruction = config.mock?.instruction
@@ -560,6 +577,51 @@ async function callRealBackend<T>(
 
   // In production mode, we trust the backend and skip validation
   // The backend is the source of truth for the data structure
+  return data as T;
+}
+
+async function callDemoEndpoint<T>(
+  config: EndpointConfig<T>,
+  params?: Record<string, any>,
+  demoApiKey?: string
+): Promise<T> {
+  if (!demoApiKey) {
+    throw new Error("[Symulate] Demo API key not configured");
+  }
+
+  const globalConfig = getConfig();
+  const demoBaseUrl = globalConfig.backendBaseUrl || "https://ndwqnzrmvmqdjtppxtlj.supabase.co/functions/v1";
+  const url = `${demoBaseUrl}/symulate-demo`;
+
+  console.log(`[Symulate] 🎭 Demo mode: Calling pre-generated endpoint ${config.method} ${config.path}`);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-symulate-demo-key": demoApiKey,
+  };
+
+  const requestBody = {
+    endpointPath: config.path,
+    method: config.method,
+  };
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(
+      `[Symulate Demo] Error ${response.status}: ${errorData.error || response.statusText}`
+    );
+  }
+
+  const data = await response.json();
+
+  console.log(`[Symulate] ✓ Demo endpoint returned pre-generated data`);
+
   return data as T;
 }
 

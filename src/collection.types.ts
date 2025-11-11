@@ -392,8 +392,10 @@ export interface Collection<T = any> {
   /**
    * List all items with pagination
    * GET /{basePath}
+   *
+   * Returns PaginatedResponse<T> by default, or custom response shape if responseSchema is defined
    */
-  list(options?: QueryOptions): Promise<PaginatedResponse<T>>;
+  list(options?: QueryOptions): Promise<any>;
 
   /**
    * Get single item by ID

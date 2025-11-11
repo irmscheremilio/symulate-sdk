@@ -65,9 +65,10 @@ export class DataStore<T extends Record<string, any>> {
     // Check if we should use AI for seed data
     const shouldUseAI = generateMode === 'ai' || generateMode === 'auto';
 
-    if (shouldUseAI && this.seedInstruction) {
+    if (shouldUseAI) {
       try {
         // Try to generate with AI
+        // Works with or without seedInstruction - schema provides type information
         const aiData = await this.generateSeedDataWithAI();
         if (aiData && aiData.length > 0) {
           return aiData;
@@ -125,9 +126,32 @@ export class DataStore<T extends Record<string, any>> {
       typeDescription,
     });
 
+    // Unwrap the response if AI returned an object with collection name key
+    // e.g., { "products": [...] } -> [...]
+    let dataArray: any[];
+    if (Array.isArray(generatedData)) {
+      dataArray = generatedData;
+    } else if (typeof generatedData === 'object' && generatedData !== null) {
+      // Check if the object has a key matching the collection name
+      if (generatedData[this.collectionName] && Array.isArray(generatedData[this.collectionName])) {
+        dataArray = generatedData[this.collectionName];
+      } else {
+        // Check for common array keys
+        const arrayKey = Object.keys(generatedData).find(key => Array.isArray(generatedData[key]));
+        if (arrayKey) {
+          dataArray = generatedData[arrayKey];
+        } else {
+          // Fallback: wrap in array
+          dataArray = [generatedData];
+        }
+      }
+    } else {
+      dataArray = [generatedData];
+    }
+
     // Ensure each item has proper timestamps and IDs
     const now = new Date().toISOString();
-    return (Array.isArray(generatedData) ? generatedData : [generatedData]).map((item: any) => ({
+    return dataArray.map((item: any) => ({
       ...item,
       id: item.id || this.generateId(),
       createdAt: item.createdAt || now,
@@ -137,8 +161,9 @@ export class DataStore<T extends Record<string, any>> {
 
   /**
    * Query all items with filtering, sorting, and pagination
+   * Supports flexible response schemas with meta fields
    */
-  async query(options: QueryOptions = {}): Promise<PaginatedResponse<T>> {
+  async query(options: QueryOptions = {}, responseSchema?: any): Promise<any> {
     await this.initialize();
 
     let items = Array.from(this.data.values());
@@ -163,6 +188,14 @@ export class DataStore<T extends Record<string, any>> {
 
     const paginatedItems = items.slice(startIndex, endIndex);
 
+    // If custom response schema provided, build response from it
+    if (responseSchema) {
+      const { buildResponseFromSchema } = await import('./collectionMeta');
+      const metaValues = { page, limit, total, totalPages };
+      return buildResponseFromSchema(responseSchema, paginatedItems, items, metaValues);
+    }
+
+    // Default response format
     return {
       data: paginatedItems,
       pagination: {
@@ -361,12 +394,17 @@ export class DataStore<T extends Record<string, any>> {
     const config = getConfig();
     const persistenceMode = config.collections?.persistence?.mode;
 
+    console.log(`[DataStore] loadFromPersistence for ${this.collectionName}, mode:`, persistenceMode);
+    console.log(`[DataStore] Config:`, config);
+
     if (!persistenceMode || persistenceMode === 'memory') {
+      console.log(`[DataStore] No persistence mode or memory mode - returning null`);
       return null;
     }
 
     try {
       if (persistenceMode === 'local') {
+        console.log(`[DataStore] Using local persistence`);
         // Browser: use localStorage, Node.js: use filesystem
         if (this.isBrowser()) {
           const { loadFromLocalStorage } = await import('./persistence/localStoragePersistence');
@@ -378,6 +416,7 @@ export class DataStore<T extends Record<string, any>> {
       }
 
       if (persistenceMode === 'cloud') {
+        console.log(`[DataStore] Using cloud persistence - calling loadFromEdgeFunction`);
         // Always use edge function for consistency across all environments
         const { loadFromEdgeFunction } = await import('./persistence/edgeFunctionPersistence');
         return await loadFromEdgeFunction(this.collectionName, this.schema, this.seedInstruction);
