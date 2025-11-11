@@ -26,7 +26,7 @@ export async function generateWithAI(options: AIProviderOptions): Promise<any> {
   if (config.openaiApiKey) {
     console.log("[Symulate] Using BYOK mode (OpenAI direct)");
     const { generateWithOpenAI } = await import("./openaiProvider");
-    return generateWithOpenAI(options, config.openaiApiKey);
+    return generateWithOpenAI(options, config.openaiApiKey, config.openaiModel);
   }
 
   // Priority 2: Use Symulate Platform API

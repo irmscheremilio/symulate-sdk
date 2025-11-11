@@ -6,14 +6,16 @@ const OPENAI_API_URL = "https://api.openai.com/v1/chat/completions";
  * Generate data using OpenAI API directly (BYOK mode)
  * @param options - Generation options
  * @param apiKey - User's OpenAI API key
+ * @param model - OpenAI model to use (default: "gpt-4o-mini")
  */
 export async function generateWithOpenAI(
   options: AIProviderOptions,
-  apiKey: string
+  apiKey: string,
+  model: string = "gpt-4o-mini"
 ): Promise<any> {
   const count = (options.schema as any)?.count || 1;
 
-  console.log(`[Symulate BYOK] Generating with OpenAI API (count: ${count})...`);
+  console.log(`[Symulate BYOK] Generating with OpenAI API (model: ${model}, count: ${count})...`);
 
   // Build the prompt for OpenAI
   const systemPrompt = `You are a data generator that creates realistic mock data based on TypeScript schemas.
@@ -30,7 +32,7 @@ The response must be parseable by JSON.parse().`;
         "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: model,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -83,7 +85,7 @@ The response must be parseable by JSON.parse().`;
     // Log token usage
     const usage = data.usage;
     if (usage) {
-      const cost = estimateCost(usage.prompt_tokens, usage.completion_tokens);
+      const cost = estimateCost(usage.prompt_tokens, usage.completion_tokens, model);
       console.log(
         `[Symulate BYOK] Tokens used: ${usage.total_tokens} ` +
         `(prompt: ${usage.prompt_tokens}, completion: ${usage.completion_tokens}) ` +
@@ -157,12 +159,28 @@ function buildUserPrompt(options: AIProviderOptions, count: number): string {
 }
 
 /**
- * Estimate cost based on gpt-4o-mini pricing
- * Input: $0.150 per 1M tokens
- * Output: $0.600 per 1M tokens
+ * Estimate cost based on model pricing (as of January 2025)
+ * Pricing per 1M tokens
  */
-function estimateCost(promptTokens: number, completionTokens: number): number {
-  const inputCost = (promptTokens / 1_000_000) * 0.15;
-  const outputCost = (completionTokens / 1_000_000) * 0.6;
+function estimateCost(promptTokens: number, completionTokens: number, model: string): number {
+  // Pricing map for different models (per 1M tokens)
+  const pricing: Record<string, { input: number; output: number }> = {
+    "gpt-4o-mini": { input: 0.15, output: 0.6 },
+    "gpt-4o": { input: 2.5, output: 10.0 },
+    "gpt-4o-2024-11-20": { input: 2.5, output: 10.0 },
+    "gpt-4o-2024-08-06": { input: 2.5, output: 10.0 },
+    "gpt-4o-2024-05-13": { input: 5.0, output: 15.0 },
+    "gpt-4-turbo": { input: 10.0, output: 30.0 },
+    "gpt-4-turbo-2024-04-09": { input: 10.0, output: 30.0 },
+    "gpt-4": { input: 30.0, output: 60.0 },
+    "gpt-3.5-turbo": { input: 0.5, output: 1.5 },
+    "gpt-3.5-turbo-0125": { input: 0.5, output: 1.5 },
+  };
+
+  // Default to gpt-4o-mini pricing if model not found
+  const modelPricing = pricing[model] || pricing["gpt-4o-mini"];
+
+  const inputCost = (promptTokens / 1_000_000) * modelPricing.input;
+  const outputCost = (completionTokens / 1_000_000) * modelPricing.output;
   return inputCost + outputCost;
 }

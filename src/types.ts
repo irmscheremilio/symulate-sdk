@@ -101,6 +101,9 @@ export interface MockendConfig {
   // OpenAI API key for BYOK (Bring Your Own Key) mode - allows using Symulate SDK without platform account
   // When set, AI generation uses your OpenAI key directly instead of Symulate platform
   openaiApiKey?: string;
+  // OpenAI model to use for BYOK mode (default: "gpt-4o-mini")
+  // Supported models: "gpt-4o-mini", "gpt-4o", "gpt-4-turbo", "gpt-3.5-turbo", etc.
+  openaiModel?: string;
   // Project ID for multi-project isolation (get from https://platform.symulate.dev)
   projectId?: string;
   // If environment is production, Symulate will send endpoint requests here.
