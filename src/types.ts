@@ -131,6 +131,10 @@ export interface MockendConfig {
     // Allows creating separate data sets for different customers or environments without interference
     // Default: "main"
     branch?: string;
+    // Eager loading: Load all related collections recursively when any collection is accessed
+    // When true: All dependencies loaded and cached together (better performance, more memory)
+    // When false (default): Related collections loaded on-demand when joins are requested
+    eagerLoading?: boolean;
     persistence?: {
       // Persistence mode: 'memory' (default), 'local' (localStorage/file), or 'cloud' (Supabase)
       mode?: 'memory' | 'local' | 'cloud';

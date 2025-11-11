@@ -185,21 +185,30 @@ export type AutoGenerateConfig = Record<string, GeneratorType | CustomGeneratorF
  */
 export interface RelationConfig {
   /**
+   * Type of relationship
+   * - belongsTo: Many-to-one (e.g., Purchase belongs to User)
+   * - hasMany: One-to-many (e.g., User has many Purchases)
+   * - hasOne: One-to-one (e.g., User has one Profile)
+   */
+  type: 'belongsTo' | 'hasMany' | 'hasOne';
+
+  /**
    * Name of the related collection
    */
   collection: string;
 
   /**
-   * Foreign key field name
-   * @example 'userId' for posts.userId
+   * Foreign key field name in THIS collection (for belongsTo)
+   * or in the RELATED collection (for hasMany/hasOne)
+   * @example 'userId' for purchases.userId (belongsTo)
    */
   foreignKey: string;
 
   /**
-   * Type of relationship
-   * @default 'oneToMany'
+   * Field in the related collection that the foreign key references
+   * @default 'id'
    */
-  type?: 'oneToMany' | 'manyToOne' | 'manyToMany';
+  references?: string;
 
   /**
    * Method name for accessing relation
@@ -227,6 +236,14 @@ export interface CollectionConfig<T = any> {
    * Uses Symulate schema builder (m.object(...))
    */
   schema: BaseSchema<T>;
+
+  /**
+   * Response schema with joined fields (optional)
+   * Use this when you want to include fields from related collections in responses
+   * The schema should include m.join() fields for related data
+   * @example responseSchema with m.join('user', 'email')
+   */
+  responseSchema?: BaseSchema<any>;
 
   /**
    * Base path for all endpoints

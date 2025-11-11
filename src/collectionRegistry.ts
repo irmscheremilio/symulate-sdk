@@ -20,6 +20,13 @@ function getRegistry(): Map<string, CollectionMetadata> {
 }
 
 /**
+ * Export getRegistry as getCollectionRegistry for use in relations module
+ */
+export function getCollectionRegistry(): Map<string, CollectionMetadata> {
+  return getRegistry();
+}
+
+/**
  * Register a collection in the global registry
  */
 export function registerCollection<T>(name: string, metadata: CollectionMetadata<T>): void {

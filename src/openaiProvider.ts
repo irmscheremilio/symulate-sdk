@@ -150,6 +150,7 @@ function buildUserPrompt(options: AIProviderOptions, count: number): string {
   prompt += `Requirements:
 - Use realistic, diverse data
 - Follow the schema exactly
+- For optional fields (marked as optional), include them 75% of the time and omit them 25% of the time
 - Return ONLY valid JSON
 - No markdown formatting
 - No code blocks

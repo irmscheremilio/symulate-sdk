@@ -2,19 +2,9 @@ import type { CachedTemplate } from "./types";
 import { getConfig } from "./config";
 import { PLATFORM_CONFIG } from "./platformConfig";
 
-// Lazy-load auth module only in Node.js to avoid bundling Node.js modules for browser
-function getAuthSession(): any {
-  if (typeof process === "undefined" || !process.versions?.node) {
-    return null; // Browser environment - no auth session
-  }
-  try {
-    // Dynamic import for Node.js only
-    const auth = require("./auth");
-    return auth.getAuthSession();
-  } catch {
-    return null;
-  }
-}
+// Note: Auth session detection removed to avoid bundling Node.js modules in browser builds
+// Cache operations that need authentication should explicitly pass auth info
+// CLI commands can still import auth module directly
 
 const CACHE_FILE = ".symulate-cache.json";
 const LOCALSTORAGE_KEY = "symulate-cache";
@@ -324,7 +314,7 @@ export async function getCachedTemplate(schemaHash: string, apiKeyId?: string): 
   // Only use Supabase in Node.js environment when authenticated
   if (isNode) {
     try {
-      const session = getAuthSession();
+      const session: any = null; // Auth removed for browser compatibility
       if (session && session.userId) {
         // Get current project ID from session
         const projectId = session.currentProjectId;
@@ -360,7 +350,7 @@ export async function setCachedTemplate(schemaHash: string, template: any, path?
   // Also write to Supabase if authenticated (Node.js only)
   if (isNode) {
     try {
-      const session = getAuthSession();
+      const session: any = null; // Auth removed for browser compatibility
 
       if (session && session.userId) {
         // Get current project ID from session
@@ -407,7 +397,7 @@ export async function clearCache(apiKeyId?: string): Promise<void> {
     }
 
     // Also clear from Supabase if authenticated
-    const session = getAuthSession();
+    const session: any = null; // Auth removed for browser compatibility
     if (session && session.userId) {
       // Get current project ID from session
       const projectId = session.currentProjectId;
@@ -492,7 +482,7 @@ export function getCacheEntriesByPattern(pattern: string): Array<{ hash: string;
  */
 export async function getSupabaseCacheEntries(apiKeyId?: string): Promise<Array<{ hash: string; timestamp: number; dataPreview: string; userId: string; apiKeyId?: string; projectId?: string; path?: string }>> {
   try {
-    const session = getAuthSession();
+    const session: any = null; // Auth removed for browser compatibility
     if (!session || !session.userId) {
       console.warn("[Symulate] Not authenticated. Run 'npx symulate login' first.");
       return [];
@@ -559,7 +549,7 @@ export async function getSupabaseCacheEntries(apiKeyId?: string): Promise<Array<
  */
 export async function getSupabaseCacheEntryByHash(hash: string, apiKeyId?: string): Promise<CachedTemplate | null> {
   try {
-    const session = getAuthSession();
+    const session: any = null; // Auth removed for browser compatibility
     if (!session || !session.userId) {
       console.warn("[Symulate] Not authenticated. Run 'npx symulate login' first.");
       return null;
@@ -628,7 +618,7 @@ export async function clearCacheByHash(hash: string, apiKeyId?: string): Promise
   // Also try Supabase if authenticated (Node.js only)
   if (isNode) {
     try {
-      const session = getAuthSession();
+      const session: any = null; // Auth removed for browser compatibility
       if (session && session.userId) {
         // Get current project ID from session
         const projectId = session.currentProjectId;
@@ -738,7 +728,7 @@ export async function clearCacheByPath(path: string, apiKeyId?: string): Promise
   // Also clear from Supabase if authenticated (Node.js only)
   if (isNode) {
     try {
-      const session = getAuthSession();
+      const session: any = null; // Auth removed for browser compatibility
       if (session && session.userId) {
         // Get current project ID from session
         const projectId = session.currentProjectId;

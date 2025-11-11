@@ -1,0 +1,273 @@
+<div class="container">
+  <!-- Header -->
+  <header>
+    <h1>Level 3: Advanced Relations & Interconnected Data</h1>
+    <p>E-Commerce Dashboard with nested joins and FK integrity</p>
+
+    <!-- Navigation -->
+    <nav>
+      <button (click)="goToDashboard()" [class.active]="activeView === 'dashboard'">Dashboard</button>
+      <button (click)="loadUsers()" [class.active]="activeView === 'users'">Users</button>
+      <button (click)="loadProducts()" [class.active]="activeView === 'products'">Products</button>
+      <button (click)="loadOrders()" [class.active]="activeView === 'orders'">Orders</button>
+    </nav>
+  </header>
+
+  <!-- Loading/Error States -->
+  <div *ngIf="loading" class="loading">Loading...</div>
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <!-- Dashboard View -->
+  <div *ngIf="activeView === 'dashboard' && !loading" class="dashboard">
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>Total Users</h3>
+        <p class="stat-number">{{ totalUsers }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>Total Products</h3>
+        <p class="stat-number">{{ totalProducts }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>Total Orders</h3>
+        <p class="stat-number">{{ totalOrders }}</p>
+      </div>
+      <div class="stat-card">
+        <h3>Revenue</h3>
+        <p class="stat-number">${{ totalRevenue.toFixed(2) }}</p>
+      </div>
+    </div>
+
+    <!-- Recent Orders (with User joins) -->
+    <section class="dashboard-section">
+      <h2>Recent Orders</h2>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Order #</th>
+              <th>Customer (via join)</th>
+              <th>Email (via join)</th>
+              <th>Status</th>
+              <th>Total</th>
+              <th>Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let order of recentOrders">
+              <td>{{ order.orderNumber }}</td>
+              <td>{{ order.userName || 'Loading...' }}</td>
+              <td>{{ order.userEmail || 'Loading...' }}</td>
+              <td><span [class]="getStatusColor(order.status)">{{ order.status }}</span></td>
+              <td>${{ order.total.toFixed(2) }}</td>
+              <td>{{ order.createdAt | date:'short' }}</td>
+              <td><button class="btn-small" (click)="selectOrder(order.id)">View</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Top Products -->
+    <section class="dashboard-section">
+      <h2>Top Rated Products</h2>
+      <div class="products-grid">
+        <div *ngFor="let product of topProducts" class="product-card">
+          <img [src]="product.imageUrl || 'https://via.placeholder.com/150'" alt="{{ product.name }}">
+          <h3>{{ product.name }}</h3>
+          <p class="category">{{ product.category }}</p>
+          <p class="price">${{ product.price.toFixed(2) }}</p>
+          <p class="rating">⭐ {{ product.rating.toFixed(1) }}</p>
+          <span [class]="product.inStock ? 'badge-success' : 'badge-danger'">
+            {{ product.inStock ? 'In Stock' : 'Out of Stock' }}
+          </span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Users View -->
+  <div *ngIf="activeView === 'users' && !selectedUser && !loading" class="users-view">
+    <h2>All Users ({{ activeUsers.length }})</h2>
+    <div class="users-grid">
+      <div *ngFor="let user of activeUsers" class="user-card" (click)="selectUser(user.id)">
+        <img [src]="user.avatar || 'https://via.placeholder.com/100'" alt="{{ user.name }}">
+        <h3>{{ user.name }}</h3>
+        <p class="email">{{ user.email }}</p>
+        <p class="phone">{{ user.phone }}</p>
+        <p class="address">{{ user.address.city }}, {{ user.address.state }}</p>
+        <p class="loyalty">{{ user.loyaltyPoints }} points</p>
+        <span [class]="user.isActive ? 'badge-success' : 'badge-inactive'">
+          {{ user.isActive ? 'Active' : 'Inactive' }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Detail View -->
+  <div *ngIf="selectedUser && !selectedOrder && !loading" class="user-detail">
+    <button class="btn-back" (click)="goBackToList()">← Back to Users</button>
+
+    <div class="user-header">
+      <img [src]="selectedUser.avatar || 'https://via.placeholder.com/150'" alt="{{ selectedUser.name }}">
+      <div class="user-info">
+        <h2>{{ selectedUser.name }}</h2>
+        <p>{{ selectedUser.email }}</p>
+        <p>{{ selectedUser.phone }}</p>
+        <p>Member since: {{ selectedUser.memberSince | date:'mediumDate' }}</p>
+        <p>Loyalty Points: {{ selectedUser.loyaltyPoints }}</p>
+      </div>
+    </div>
+
+    <div class="user-address">
+      <h3>Address</h3>
+      <p>{{ selectedUser.address.street }}</p>
+      <p>{{ selectedUser.address.city }}, {{ selectedUser.address.state }} {{ selectedUser.address.zipCode }}</p>
+      <p>{{ selectedUser.address.country }}</p>
+    </div>
+
+    <h3>Order History ({{ userOrders.length }})</h3>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Status</th>
+            <th>Items</th>
+            <th>Total</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let order of userOrders">
+            <td>{{ order.orderNumber }}</td>
+            <td><span [class]="getStatusColor(order.status)">{{ order.status }}</span></td>
+            <td>-</td>
+            <td>${{ order.total.toFixed(2) }}</td>
+            <td>{{ order.createdAt | date:'short' }}</td>
+            <td><button class="btn-small" (click)="selectOrder(order.id)">View</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Order Detail View (with nested joins) -->
+  <div *ngIf="selectedOrder && !loading" class="order-detail">
+    <button class="btn-back" (click)="goBackToList()">← Back</button>
+
+    <div class="order-header">
+      <h2>Order {{ selectedOrder.orderNumber }}</h2>
+      <span [class]="getStatusColor(selectedOrder.status)">{{ selectedOrder.status }}</span>
+    </div>
+
+    <div class="order-info-grid">
+      <div class="info-section">
+        <h3>Customer (from join)</h3>
+        <p><strong>{{ selectedOrder.userName }}</strong></p>
+        <p>{{ selectedOrder.userEmail }}</p>
+      </div>
+
+      <div class="info-section">
+        <h3>Shipping Address</h3>
+        <p>{{ selectedOrder.shippingAddress.street }}</p>
+        <p>{{ selectedOrder.shippingAddress.city }}, {{ selectedOrder.shippingAddress.state }}</p>
+        <p>{{ selectedOrder.shippingAddress.zipCode }}</p>
+        <p>{{ selectedOrder.shippingAddress.country }}</p>
+      </div>
+
+      <div class="info-section">
+        <h3>Order Summary</h3>
+        <p>Subtotal: ${{ selectedOrder.subtotal.toFixed(2) }}</p>
+        <p>Tax: ${{ selectedOrder.tax.toFixed(2) }}</p>
+        <p>Shipping: ${{ selectedOrder.shipping.toFixed(2) }}</p>
+        <p><strong>Total: ${{ selectedOrder.total.toFixed(2) }}</strong></p>
+      </div>
+    </div>
+
+    <h3>Order Items (with nested joins)</h3>
+    <div class="order-items">
+      <div *ngFor="let item of selectedOrderItems" class="order-item-card">
+        <img [src]="item.productImageUrl || 'https://via.placeholder.com/100'" alt="{{ item.productName }}">
+        <div class="item-details">
+          <h4>{{ item.productName }}</h4>
+          <p class="category">{{ item.productCategory }}</p>
+          <p>Quantity: {{ item.quantity }}</p>
+          <p>Unit Price: ${{ item.unitPrice.toFixed(2) }}</p>
+          <p class="item-total">Total: ${{ item.totalPrice.toFixed(2) }}</p>
+        </div>
+        <div class="nested-join-info">
+          <p class="join-label">Deep Nested Join (order.user):</p>
+          <p>Customer: {{ item.customerName }}</p>
+          <p>Email: {{ item.customerEmail }}</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Products View -->
+  <div *ngIf="activeView === 'products' && !loading" class="products-view">
+    <h2>All Products ({{ topProducts.length }})</h2>
+    <div class="products-grid">
+      <div *ngFor="let product of topProducts" class="product-card">
+        <img [src]="product.imageUrl || 'https://via.placeholder.com/150'" alt="{{ product.name }}">
+        <h3>{{ product.name }}</h3>
+        <p class="category">{{ product.category }}</p>
+        <p class="description">{{ product.description }}</p>
+        <p class="price">${{ product.price.toFixed(2) }}</p>
+        <p class="rating">⭐ {{ product.rating.toFixed(1) }}</p>
+        <p class="stock">Stock: {{ product.stock }}</p>
+        <span [class]="product.inStock ? 'badge-success' : 'badge-danger'">
+          {{ product.inStock ? 'In Stock' : 'Out of Stock' }}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Orders View -->
+  <div *ngIf="activeView === 'orders' && !selectedOrder && !loading" class="orders-view">
+    <h2>All Orders ({{ recentOrders.length }})</h2>
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Order #</th>
+            <th>Customer (via join)</th>
+            <th>Email (via join)</th>
+            <th>Status</th>
+            <th>Total</th>
+            <th>Date</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let order of recentOrders">
+            <td>{{ order.orderNumber }}</td>
+            <td>{{ order.userName }}</td>
+            <td>{{ order.userEmail }}</td>
+            <td><span [class]="getStatusColor(order.status)">{{ order.status }}</span></td>
+            <td>${{ order.total.toFixed(2) }}</td>
+            <td>{{ order.createdAt | date:'short' }}</td>
+            <td><button class="btn-small" (click)="selectOrder(order.id)">View</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <h3>Level 3 Features:</h3>
+    <ul>
+      <li>✅ Interconnected collections (Users → Orders → OrderItems → Products)</li>
+      <li>✅ Foreign key relationships with integrity</li>
+      <li>✅ Response schemas with joins (m.join)</li>
+      <li>✅ Nested joins (order.user.name)</li>
+      <li>✅ Realistic e-commerce data</li>
+      <li>✅ Full CRUD operations with Collections API</li>
+    </ul>
+  </footer>
+</div>

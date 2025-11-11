@@ -1,0 +1,108 @@
+<div class="container">
+  <header>
+    <h1>{{ title }}</h1>
+    <p class="subtitle">Demonstrating Symulate SDK with better separation of concerns</p>
+  </header>
+
+  <!-- Loading State -->
+  <div *ngIf="loading" class="loading">Loading...</div>
+
+  <!-- Error State -->
+  <div *ngIf="error" class="error">{{ error }}</div>
+
+  <!-- Users List View -->
+  <div *ngIf="!selectedUser && !loading" class="users-view">
+    <h2>Users ({{ users.length }})</h2>
+    <div class="grid">
+      <div *ngFor="let user of users" class="card user-card" (click)="selectUser(user.id)">
+        <img *ngIf="user.avatar" [src]="user.avatar" [alt]="user.username" class="avatar" />
+        <div class="user-info">
+          <h3>{{ user.firstName }} {{ user.lastName }}</h3>
+          <p class="username">{{ '@' }}{{ user.username }}</p>
+          <p class="email">{{ user.email }}</p>
+          <p class="role">{{ user.role }}</p>
+          <p *ngIf="user.bio" class="bio">{{ user.bio }}</p>
+          <span *ngIf="user.isActive" class="badge active">Active</span>
+          <span *ngIf="!user.isActive" class="badge inactive">Inactive</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- User Detail View -->
+  <div *ngIf="selectedUser && !selectedPost && !loading" class="user-detail-view">
+    <button class="back-button" (click)="goBack()">← Back to Users</button>
+
+    <div class="user-header">
+      <img *ngIf="selectedUser.avatar" [src]="selectedUser.avatar" [alt]="selectedUser.username" class="avatar-large" />
+      <div class="user-details">
+        <h2>{{ selectedUser.firstName }} {{ selectedUser.lastName }}</h2>
+        <p class="username">{{ '@' }}{{ selectedUser.username }}</p>
+        <p class="email">{{ selectedUser.email }}</p>
+        <p class="role">{{ selectedUser.role }}</p>
+        <p *ngIf="selectedUser.bio" class="bio">{{ selectedUser.bio }}</p>
+        <p class="joined">Joined {{ selectedUser.joinedAt | date }}</p>
+        <span *ngIf="selectedUser.isActive" class="badge active">Active</span>
+        <span *ngIf="!selectedUser.isActive" class="badge inactive">Inactive</span>
+      </div>
+    </div>
+
+    <h3>Posts ({{ userPosts.length }})</h3>
+    <div class="posts-grid">
+      <div *ngFor="let post of userPosts" class="card post-card" (click)="selectPost(post.id)">
+        <img *ngIf="post.coverImage" [src]="post.coverImage" [alt]="post.title" class="post-cover" />
+        <div class="post-content">
+          <h4>{{ post.title }}</h4>
+          <p class="excerpt">{{ post.excerpt || (post.content | slice:0:150) + '...' }}</p>
+          <div class="post-meta">
+            <span class="badge status-{{ post.status }}">{{ post.status }}</span>
+            <span class="meta-item">👁 {{ post.viewCount }}</span>
+            <span class="meta-item">❤ {{ post.likeCount }}</span>
+            <span class="meta-item">{{ post.publishedAt | date }}</span>
+          </div>
+          <div *ngIf="post.tags && post.tags.length > 0" class="tags">
+            <span *ngFor="let tag of post.tags" class="tag">{{ tag }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Post Detail View -->
+  <div *ngIf="selectedPost && !loading" class="post-detail-view">
+    <button class="back-button" (click)="goBack()">← Back to Posts</button>
+
+    <div class="post-detail">
+      <img *ngIf="selectedPost.coverImage" [src]="selectedPost.coverImage" [alt]="selectedPost.title" class="post-cover-large" />
+      <h2>{{ selectedPost.title }}</h2>
+      <div class="post-meta">
+        <span class="badge status-{{ selectedPost.status }}">{{ selectedPost.status }}</span>
+        <span class="meta-item">👁 {{ selectedPost.viewCount }}</span>
+        <span class="meta-item">❤ {{ selectedPost.likeCount }}</span>
+        <span class="meta-item">Published {{ selectedPost.publishedAt | date }}</span>
+        <span class="meta-item">Updated {{ selectedPost.updatedAt | date }}</span>
+      </div>
+      <div *ngIf="selectedPost.tags && selectedPost.tags.length > 0" class="tags">
+        <span *ngFor="let tag of selectedPost.tags" class="tag">{{ tag }}</span>
+      </div>
+      <div class="post-body">
+        <p>{{ selectedPost.content }}</p>
+      </div>
+    </div>
+
+    <h3>Comments ({{ postComments.length }})</h3>
+    <div class="comments">
+      <div *ngFor="let comment of postComments" class="card comment-card">
+        <div class="comment-header">
+          <span class="comment-user">User {{ comment.userId }}</span>
+          <span class="comment-date">{{ comment.createdAt | date:'short' }}</span>
+        </div>
+        <p class="comment-content">{{ comment.content }}</p>
+        <div class="comment-footer">
+          <span class="meta-item">❤ {{ comment.likeCount }}</span>
+          <span *ngIf="comment.parentCommentId" class="badge reply">Reply</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

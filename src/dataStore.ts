@@ -15,6 +15,9 @@ export class DataStore<T extends Record<string, any>> {
   private seedInstruction?: string;
   private initialized: boolean = false;
 
+  // Static flag to track if we're currently initializing all collections
+  private static isInitializingAll: boolean = false;
+
   constructor(config: {
     collectionName: string;
     schema: BaseSchema<T>;
@@ -28,24 +31,94 @@ export class DataStore<T extends Record<string, any>> {
   }
 
   /**
-   * Initialize store with seed data
-   * Called lazily on first operation
+   * Initialize all collections in dependency order with FK integrity
+   * This is a static method that coordinates seeding across all collections
    */
-  async initialize(): Promise<void> {
-    if (this.initialized) return;
-
-    // Check if we should load from persistence
-    const persistedData = await this.loadFromPersistence();
-    if (persistedData && persistedData.length > 0) {
-      persistedData.forEach(item => {
-        this.data.set(item.id, item);
-      });
-      this.initialized = true;
+  static async initializeAllCollections(): Promise<void> {
+    // Prevent multiple simultaneous initialization attempts
+    if (DataStore.isInitializingAll) {
       return;
     }
 
-    // Generate seed data
-    const seedData = await this.generateSeedData();
+    DataStore.isInitializingAll = true;
+
+    try {
+      const { getCollectionSeedOrder } = await import('./relations');
+      const { getCollectionRegistry } = await import('./collectionRegistry');
+
+      const registry = getCollectionRegistry();
+      const seedOrder = getCollectionSeedOrder();
+
+      console.log('[Symulate] Initializing collections in dependency order:', seedOrder);
+
+      // Track available IDs from already-seeded collections
+      const availableIds = new Map<string, string[]>();
+
+      // Seed each collection in dependency order
+      for (const collectionName of seedOrder) {
+        const metadata = registry.get(collectionName);
+        if (!metadata) continue;
+
+        const store = metadata.store;
+        if (!store || store.initialized) continue;
+
+        // Try to load from persistence first
+        const persistedData = await store.loadFromPersistence();
+        if (persistedData && persistedData.length > 0) {
+          // Load from persistence
+          persistedData.forEach(item => {
+            store.data.set(item.id, item);
+          });
+          store.initialized = true;
+
+          // Store available IDs for FK references
+          const ids = Array.from(store.data.keys());
+          availableIds.set(collectionName, ids);
+
+          console.log(`[Symulate] Loaded ${collectionName} from persistence with ${ids.length} items`);
+          continue;
+        }
+
+        // No persisted data - generate fresh with FK integrity
+        // Build FK value pools for this collection
+        const fkValuePools = new Map<string, string[]>();
+        if (metadata.config.relations) {
+          for (const [relationName, relationConfig] of Object.entries(metadata.config.relations)) {
+            // For belongsTo relations, we need IDs from the related collection
+            if (relationConfig.type === 'belongsTo') {
+              const relatedCollectionName = relationConfig.collection;
+              const relatedIds = availableIds.get(relatedCollectionName);
+              if (relatedIds && relatedIds.length > 0) {
+                // Map foreign key field name to available IDs
+                fkValuePools.set(relationConfig.foreignKey, relatedIds);
+              }
+            }
+          }
+        }
+
+        // Generate seed data with FK integrity
+        await store.initializeWithFKIntegrity(fkValuePools);
+
+        // Store available IDs for this collection
+        const ids = Array.from(store.data.keys());
+        availableIds.set(collectionName, ids);
+
+        console.log(`[Symulate] Initialized ${collectionName} with ${ids.length} items`);
+      }
+    } finally {
+      DataStore.isInitializingAll = false;
+    }
+  }
+
+  /**
+   * Initialize this specific store with FK integrity support
+   * Called by initializeAllCollections
+   */
+  async initializeWithFKIntegrity(fkValuePools: Map<string, string[]>): Promise<void> {
+    if (this.initialized) return;
+
+    // Generate seed data with FK value pools
+    const seedData = await this.generateSeedData(fkValuePools);
     seedData.forEach(item => {
       this.data.set(item.id, item);
     });
@@ -56,9 +129,32 @@ export class DataStore<T extends Record<string, any>> {
   }
 
   /**
-   * Generate seed data using AI or Faker
+   * Initialize store with seed data
+   * Called lazily on first operation
+   *
+   * IMPORTANT: This method coordinates FK-aware seeding across all collections
+   * by seeding them in dependency order.
    */
-  private async generateSeedData(): Promise<T[]> {
+  async initialize(): Promise<void> {
+    if (this.initialized) return;
+
+    // IMPORTANT: Always use coordinated initialization to ensure FK integrity
+    // Even if data exists in persistence, we need to ensure all collections
+    // are initialized together in the correct order
+    await DataStore.initializeAllCollections();
+
+    // This collection should now be initialized by initializeAllCollections
+    // If not, something went wrong
+    if (!this.initialized) {
+      throw new Error(`Failed to initialize collection ${this.collectionName}`);
+    }
+  }
+
+  /**
+   * Generate seed data using AI or Faker
+   * Supports FK integrity by accepting available IDs from related collections
+   */
+  private async generateSeedData(availableRelationIds?: Map<string, string[]>): Promise<T[]> {
     const config = getConfig();
     const generateMode = config.generateMode || 'faker';
 
@@ -86,7 +182,7 @@ export class DataStore<T extends Record<string, any>> {
 
     // Use Faker for seed data (default or fallback)
     return Array.from({ length: this.seedCount }, () => {
-      const item = generateWithFaker(this.schema) as T;
+      const item = generateWithFaker(this.schema, 1, availableRelationIds) as T;
       // Ensure id, createdAt, updatedAt exist
       const now = new Date().toISOString();
       return {
@@ -410,8 +506,17 @@ export class DataStore<T extends Record<string, any>> {
           const { loadFromLocalStorage } = await import('./persistence/localStoragePersistence');
           return await loadFromLocalStorage(this.collectionName);
         } else {
-          const { loadFromFile } = await import('./persistence/filePersistence');
-          return await loadFromFile(this.collectionName);
+          // Dynamic import - only executed in Node.js environment
+          // This will never run in browser, so the module doesn't need to exist
+          try {
+            // Use dynamic string to prevent bundlers from resolving this at build time
+            const modulePath = './persistence/' + 'filePersistence';
+            const { loadFromFile } = await import(/* @vite-ignore */ modulePath);
+            return await loadFromFile(this.collectionName);
+          } catch (error) {
+            console.warn('[DataStore] File persistence not available in this environment');
+            return null;
+          }
         }
       }
 
@@ -448,8 +553,15 @@ export class DataStore<T extends Record<string, any>> {
           const { saveToLocalStorage } = await import('./persistence/localStoragePersistence');
           await saveToLocalStorage(this.collectionName, data);
         } else {
-          const { saveToFile } = await import('./persistence/filePersistence');
-          await saveToFile(this.collectionName, data);
+          // Dynamic import - only executed in Node.js environment
+          try {
+            // Use dynamic string to prevent bundlers from resolving this at build time
+            const modulePath = './persistence/' + 'filePersistence';
+            const { saveToFile } = await import(/* @vite-ignore */ modulePath);
+            await saveToFile(this.collectionName, data);
+          } catch (error) {
+            console.warn('[DataStore] File persistence not available in this environment');
+          }
         }
       }
 

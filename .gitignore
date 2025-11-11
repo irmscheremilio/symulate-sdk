@@ -144,3 +144,4 @@ vite.config.ts.timestamp-*
 package-lock.json
 pnpm-lock.yaml
 yarn.lock
+/examples/angular/level3-advanced-relations/.angular

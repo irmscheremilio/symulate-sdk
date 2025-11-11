@@ -1,23 +1,10 @@
 import type { AIProviderOptions } from "./types";
 import { getConfig } from "./config";
 import { PLATFORM_CONFIG } from "./platformConfig";
+import { generateWithOpenAI } from "./openaiProvider";
 
 // Use configured Supabase URL (respects environment variables for local dev)
 const PLATFORM_API_URL = `${PLATFORM_CONFIG.supabase.url}/functions/v1/symulate`;
-
-// Lazy-load auth module only in Node.js to avoid bundling Node.js modules for browser
-function getAuthSession(): any {
-  if (typeof process === "undefined" || !process.versions?.node) {
-    return null; // Browser environment - no auth session
-  }
-  try {
-    // Dynamic import for Node.js only
-    const auth = require("./auth");
-    return auth.getAuthSession();
-  } catch {
-    return null;
-  }
-}
 
 export async function generateWithAI(options: AIProviderOptions): Promise<any> {
   const config = getConfig();
@@ -25,7 +12,6 @@ export async function generateWithAI(options: AIProviderOptions): Promise<any> {
   // Priority 1: Use BYOK (Bring Your Own Key) if configured
   if (config.openaiApiKey) {
     console.log("[Symulate] Using BYOK mode (OpenAI direct)");
-    const { generateWithOpenAI } = await import("./openaiProvider");
     return generateWithOpenAI(options, config.openaiApiKey, config.openaiModel);
   }
 
@@ -52,28 +38,15 @@ async function generateWithPlatform(options: AIProviderOptions, apiKey: string):
   const config = getConfig();
   const count = (options.schema as any)?.count || 1;
 
-  // Get project ID - prioritize configured projectId, then fall back to CLI session
-  let projectId: string | undefined = config.projectId;
-
-  // If no configured projectId, try to get from CLI session (Node.js only)
-  if (!projectId) {
-    const session = getAuthSession();
-    if (session) {
-      projectId = session.currentProjectId;
-    }
-  }
+  // Get project ID from configuration
+  const projectId: string | undefined = config.projectId;
 
   // Project ID is required for all requests
   if (!projectId) {
     throw new Error(
       "Project ID required. Configure it with:\n" +
       "  configureSymulate({ projectId: 'your-project-id' })\n\n" +
-      "Get your project ID from https://platform.symulate.dev\n\n" +
-      "Alternatively, if using CLI:\n" +
-      "  1. Run 'npx symulate orgs list' to see available organizations\n" +
-      "  2. Run 'npx symulate orgs use <org-id>' to select an organization\n" +
-      "  3. Run 'npx symulate projects list' to see available projects\n" +
-      "  4. Run 'npx symulate projects use <project-id>' to select a project"
+      "Get your project ID from https://platform.symulate.dev"
     );
   }
 

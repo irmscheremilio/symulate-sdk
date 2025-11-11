@@ -5,8 +5,16 @@ import { getConfig } from "./config";
 /**
  * Generates mock data using Faker.js based on the schema
  * This mode works offline and is perfect for CI/CD pipelines
+ *
+ * @param schema - The schema to generate data for
+ * @param count - Number of items to generate
+ * @param fkValuePools - Map of field names to available foreign key values for FK integrity
  */
-export function generateWithFaker<T>(schema: BaseSchema<T>, count: number = 1): T {
+export function generateWithFaker<T>(
+  schema: BaseSchema<T>,
+  count: number = 1,
+  fkValuePools?: Map<string, string[]>
+): T {
   const config = getConfig();
 
   // Set seed for deterministic generation if provided
@@ -14,23 +22,45 @@ export function generateWithFaker<T>(schema: BaseSchema<T>, count: number = 1): 
     faker.seed(config.fakerSeed);
   }
 
-  // If count > 1, generate array
-  if (count > 1) {
-    return Array.from({ length: count }, () => generateSingleValue(schema)) as T;
+  // If the schema itself is an array schema and count > 1, generate the array with specified count
+  if (schema._meta.schemaType === 'array' && count > 1) {
+    const arrSchema = schema as ArraySchema<any>;
+    return Array.from({ length: count }, () => generateSingleValue(arrSchema._element, fkValuePools)) as T;
   }
 
-  return generateSingleValue(schema) as T;
+  // If count > 1 but schema is not an array, generate array of objects
+  if (count > 1) {
+    return Array.from({ length: count }, () => generateSingleValue(schema, fkValuePools)) as T;
+  }
+
+  return generateSingleValue(schema, fkValuePools) as T;
 }
 
-function generateSingleValue(schema: BaseSchema): any {
+function generateSingleValue(schema: BaseSchema, fkValuePools?: Map<string, string[]>, fieldName?: string): any {
+  // Check if field is optional and randomly make it undefined (25% chance)
+  if (schema._meta.optional && Math.random() < 0.25) {
+    return undefined;
+  }
+
   const schemaType = schema._meta.schemaType;
+
+  // Handle join schemas (will be resolved at query time, not generated)
+  if (schemaType === "join") {
+    // Joins are resolved at query time, not during generation
+    // Return a placeholder that will be replaced during join resolution
+    return null;
+  }
 
   // Handle object schemas
   if (schemaType === "object") {
     const objSchema = schema as ObjectSchema<any>;
     const result: any = {};
     for (const key in objSchema._shape) {
-      result[key] = generateSingleValue(objSchema._shape[key]);
+      const value = generateSingleValue(objSchema._shape[key], fkValuePools, key);
+      // Only include field if it's not undefined (respects optional fields)
+      if (value !== undefined) {
+        result[key] = value;
+      }
     }
     return result;
   }
@@ -40,12 +70,22 @@ function generateSingleValue(schema: BaseSchema): any {
     const arrSchema = schema as ArraySchema<any>;
     // Generate 3-5 items for arrays by default
     const arrayLength = faker.number.int({ min: 3, max: 5 });
-    return Array.from({ length: arrayLength }, () => generateSingleValue(arrSchema._element));
+    return Array.from({ length: arrayLength }, () => generateSingleValue(arrSchema._element, fkValuePools));
   }
 
   // Handle primitive types - map to Faker.js methods
   switch (schemaType) {
     case "uuid":
+      // Check if this is a foreign key field with available values
+      if (fieldName && fkValuePools && fkValuePools.has(fieldName)) {
+        const availableIds = fkValuePools.get(fieldName)!;
+        if (availableIds.length > 0) {
+          // Select random ID from available pool
+          const randomIndex = faker.number.int({ min: 0, max: availableIds.length - 1 });
+          return availableIds[randomIndex];
+        }
+      }
+      // Generate random UUID if not a FK or no values available
       return faker.string.uuid();
 
     case "string":

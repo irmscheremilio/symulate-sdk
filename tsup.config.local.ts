@@ -16,21 +16,25 @@ const getSupabaseUrl = () => process.env.SYMULATE_SUPABASE_URL || TEST_SUPABASE_
 const getSupabaseAnonKey = () => process.env.SYMULATE_SUPABASE_ANON_KEY || TEST_SUPABASE_ANON_KEY;
 
 export default defineConfig({
-  entry: ['src/index.ts', 'src/cli/index.ts'],
+  entry: {
+    index: 'src/index.ts',
+    browser: 'src/browser.ts',
+    'cli/index': 'src/cli/index.ts',
+  },
   format: ['cjs', 'esm'],
   dts: true,
   clean: true,
   splitting: false, // Disable code splitting to avoid chunks
-  // Bundle all dependencies except those that can't be bundled
+  treeshake: true, // Enable tree-shaking to remove unused imports
+  platform: 'neutral', // Build for both Node.js and browser
+  // Bundle specific internal modules
   noExternal: [
-    /@supabase/,
-    /@faker-js/,
-    /commander/,
-    /glob/,
-    /open/,
+    /openaiProvider/,
   ],
   external: [
-    // Node.js built-ins
+    // External dependencies
+    /@faker-js/,
+    // Node.js built-ins - mark as external so they're not bundled for browser
     'node:fs',
     'node:path',
     'node:url',
@@ -42,6 +46,17 @@ export default defineConfig({
     'crypto',
     'os',
     'child_process',
+    'util',
+    'buffer',
+    'readline',
+    // External dependencies that may have Node.js dependencies
+    /@supabase/,
+    /commander/,
+    /glob/,
+    /open/,
+    // Internal Node.js-only modules
+    /\/persistence\/filePersistence$/,
+    /\/auth$/,
     // Don't bundle tsx and esbuild - they need to be loaded from node_modules
     'tsx',
     'tsx/esm/api',

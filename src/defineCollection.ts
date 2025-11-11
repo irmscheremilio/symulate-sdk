@@ -6,6 +6,7 @@ import { registerCollection, getCollection } from './collectionRegistry';
 import { ErrorConfig, ParameterConfig, ParameterRole } from './types';
 import { schemaToTypeDescription } from './schema';
 import { PLATFORM_CONFIG } from './platformConfig';
+import { resolveJoins } from './relations';
 
 /**
  * Check if any error condition is met and throw appropriate error with generated response
@@ -229,19 +230,34 @@ export function defineCollection<T extends Record<string, any>>(
       await applyDelay(operationConfig?.mock?.delay);
 
       // Extract response schema if defined
-      const responseSchema = operationConfig?.responseSchema;
+      const responseSchema = operationConfig?.responseSchema || normalizedConfig.responseSchema;
 
       // Check persistence mode
       const globalConfig = getConfig();
       const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
+      let result;
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
-        // Use local DataStore with optional response schema
-        return await store.query(options, responseSchema);
+        // Use local DataStore WITHOUT responseSchema (we'll resolve joins after)
+        // The responseSchema is for item structure (with joins), not response structure
+        result = await store.query(options);
       } else {
         // Use edge function for server-side persistence
-        return await callStatefulList(normalizedConfig, options);
+        result = await callStatefulList(normalizedConfig, options);
       }
+
+      // Resolve joins if responseSchema contains join fields
+      if (responseSchema && normalizedConfig.relations) {
+        if (result.data) {
+          // Paginated response
+          result.data = await resolveJoins(result.data, responseSchema, normalizedConfig.relations, normalizedConfig.name);
+        } else if (Array.isArray(result)) {
+          // Direct array response
+          result = await resolveJoins(result, responseSchema, normalizedConfig.relations, normalizedConfig.name);
+        }
+      }
+
+      return result;
     };
   }
 
@@ -258,21 +274,31 @@ export function defineCollection<T extends Record<string, any>>(
       // Simulate loading delay if configured
       await applyDelay(operationConfig?.mock?.delay);
 
+      // Extract response schema if defined
+      const responseSchema = operationConfig?.responseSchema || normalizedConfig.responseSchema;
+
       // Check persistence mode
       const globalConfig = getConfig();
       const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
 
+      let item;
       if (persistenceMode === 'memory' || persistenceMode === 'local') {
         // Use local DataStore
-        const item = await store.findById(id);
+        item = await store.findById(id);
         if (!item) {
           throw new Error(`${normalizedConfig.name} not found: ${id}`);
         }
-        return item;
       } else {
         // Use edge function for server-side persistence
-        return await callStatefulGet(normalizedConfig, id);
+        item = await callStatefulGet(normalizedConfig, id);
       }
+
+      // Resolve joins if responseSchema contains join fields
+      if (responseSchema && normalizedConfig.relations) {
+        item = await resolveJoins(item, responseSchema, normalizedConfig.relations, normalizedConfig.name);
+      }
+
+      return item;
     };
   }
 
@@ -295,6 +321,9 @@ export function defineCollection<T extends Record<string, any>>(
         processedData = await normalizedConfig.hooks.beforeCreate(processedData);
       }
 
+      // Extract response schema if defined
+      const responseSchema = operationConfig?.responseSchema || normalizedConfig.responseSchema;
+
       // Check persistence mode
       const globalConfig = getConfig();
       const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
@@ -310,6 +339,11 @@ export function defineCollection<T extends Record<string, any>>(
 
       if (normalizedConfig.hooks?.afterCreate) {
         await normalizedConfig.hooks.afterCreate(created);
+      }
+
+      // Resolve joins if responseSchema contains join fields
+      if (responseSchema && normalizedConfig.relations) {
+        created = await resolveJoins(created, responseSchema, normalizedConfig.relations, normalizedConfig.name) as T;
       }
 
       return created;
@@ -334,6 +368,9 @@ export function defineCollection<T extends Record<string, any>>(
         processedData = await normalizedConfig.hooks.beforeUpdate(id, data);
       }
 
+      // Extract response schema if defined
+      const responseSchema = operationConfig?.responseSchema || normalizedConfig.responseSchema;
+
       // Check persistence mode
       const globalConfig = getConfig();
       const persistenceMode = globalConfig.collections?.persistence?.mode || getDefaultPersistenceMode();
@@ -353,6 +390,11 @@ export function defineCollection<T extends Record<string, any>>(
 
       if (normalizedConfig.hooks?.afterUpdate) {
         await normalizedConfig.hooks.afterUpdate(updated);
+      }
+
+      // Resolve joins if responseSchema contains join fields
+      if (responseSchema && normalizedConfig.relations) {
+        updated = await resolveJoins(updated, responseSchema, normalizedConfig.relations, normalizedConfig.name) as T;
       }
 
       return updated;
@@ -480,10 +522,11 @@ export function defineCollection<T extends Record<string, any>>(
 /**
  * Normalize collection config with defaults
  */
-function normalizeConfig<T>(config: CollectionConfig<T>): Omit<Required<CollectionConfig<T>>, 'autoGenerate'> & Pick<CollectionConfig<T>, 'autoGenerate'> {
+function normalizeConfig<T>(config: CollectionConfig<T>): Omit<Required<CollectionConfig<T>>, 'autoGenerate' | 'responseSchema'> & Pick<CollectionConfig<T>, 'autoGenerate' | 'responseSchema'> {
   return {
     name: config.name,
     schema: config.schema,
+    responseSchema: config.responseSchema,
     basePath: config.basePath || `/${config.name}`,
     seedCount: config.seedCount ?? 10,
     seedInstruction: config.seedInstruction || '',

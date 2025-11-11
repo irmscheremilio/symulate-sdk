@@ -45,6 +45,7 @@ export interface BaseSchema<T = any> {
     schemaType: SchemaType | "object" | "array";
     description?: string;
     dataType?: JsonType; // Optional override for JSON type
+    optional?: boolean; // Whether this field can be undefined (for 25% undefined chance in generation)
   };
 }
 
@@ -53,6 +54,7 @@ export interface StringSchema extends BaseSchema<string> {
     schemaType: SchemaType;
     description?: string;
     dataType?: JsonType;
+    optional?: boolean;
     dbReference?: {
       schema?: string;
       table: string;
@@ -66,6 +68,7 @@ export interface NumberSchema extends BaseSchema<number> {
     schemaType: "number" | "commerce.price" | "collectionsMeta.page" | "collectionsMeta.limit" | "collectionsMeta.total" | "collectionsMeta.totalPages" | string;
     description?: string;
     dataType?: JsonType;
+    optional?: boolean;
     dbReference?: {
       schema?: string;
       table: string;
@@ -79,6 +82,7 @@ export interface BooleanSchema extends BaseSchema<boolean> {
     schemaType: "boolean";
     description?: string;
     dataType?: JsonType;
+    optional?: boolean;
     dbReference?: {
       schema?: string;
       table: string;
@@ -92,6 +96,7 @@ export interface ObjectSchema<T extends Record<string, any>> extends BaseSchema<
     schemaType: "object";
     description?: string;
     dataType?: JsonType;
+    optional?: boolean;
   };
   _shape: { [K in keyof T]: BaseSchema<T[K]> };
 }
@@ -101,8 +106,22 @@ export interface ArraySchema<T> extends BaseSchema<T[]> {
     schemaType: "array";
     description?: string;
     dataType?: JsonType;
+    optional?: boolean;
   };
   _element: BaseSchema<T>;
+}
+
+export interface JoinSchema extends BaseSchema<any> {
+  _meta: {
+    schemaType: "join";
+    description?: string;
+    dataType?: JsonType;
+    optional?: boolean;
+    join: {
+      relationPath: string; // e.g., "user" or "purchase.user"
+      field?: string; // Optional field to extract, e.g., "email"
+    };
+  };
 }
 
 // Type inference helper
@@ -514,6 +533,31 @@ export class SchemaBuilder {
       _element: element,
     };
   }
+
+  // Modifier: Make any schema optional (25% chance of being undefined during generation)
+  optional<T extends BaseSchema>(schema: T): T {
+    return {
+      ...schema,
+      _meta: {
+        ...schema._meta,
+        optional: true,
+      },
+    } as T;
+  }
+
+  // Join: Reference a related collection field
+  join(relationPath: string, field?: string): JoinSchema {
+    return {
+      _type: undefined as any,
+      _meta: {
+        schemaType: "join",
+        join: {
+          relationPath,
+          field,
+        },
+      },
+    };
+  }
 }
 
 // Helper function to map database types to schema types
@@ -575,6 +619,11 @@ export function schemaToTypeDescription(schema: BaseSchema): any {
     return [schemaToTypeDescription(arrSchema._element)];
   }
 
+  // For join fields, return placeholder (will be resolved at query time)
+  if (schema._meta.schemaType === "join") {
+    return "(joined field - resolved at query time)";
+  }
+
   // For collectionsMeta fields, return the schemaType itself (not a description)
   // This allows edge functions to detect and populate these fields
   if (schema._meta.schemaType.startsWith && schema._meta.schemaType.startsWith("collectionsMeta.")) {
@@ -613,7 +662,14 @@ export function schemaToTypeDescription(schema: BaseSchema): any {
   };
 
   const desc = typeDescriptions[schema._meta.schemaType as string] || schema._meta.schemaType;
-  return schema._meta.description ? `${desc} (${schema._meta.description})` : desc;
+  let finalDesc = schema._meta.description ? `${desc} (${schema._meta.description})` : desc;
+
+  // Add optional marker for AI
+  if (schema._meta.optional) {
+    finalDesc += " [optional]";
+  }
+
+  return finalDesc;
 }
 
 /**
